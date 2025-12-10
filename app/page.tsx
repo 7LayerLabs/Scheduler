@@ -437,7 +437,7 @@ export default function Home() {
     );
   }
 
-  const currentUser: User = userProfile;
+  const currentUser = userProfile as User;
 
   // Staff sees simplified dashboard
   if (currentUser.role === 'staff') {

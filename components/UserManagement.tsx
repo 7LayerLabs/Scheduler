@@ -10,6 +10,8 @@ import {
   updateTimeOffRequestStatus,
   updateShiftSwapRequestStatus,
   User,
+  TimeOffRequest,
+  ShiftSwapRequest,
 } from '@/lib/instantdb';
 import { Employee } from '@/lib/types';
 
@@ -27,8 +29,8 @@ export default function UserManagement({ currentUser, employees, profilePicUrl }
   const { requests: timeOffRequests, isLoading: loadingTimeOff } = useTimeOffRequests();
   const { requests: swapRequests, isLoading: loadingSwaps } = useShiftSwapRequests();
 
-  const pendingTimeOff = timeOffRequests.filter(r => r.status === 'pending');
-  const pendingSwaps = swapRequests.filter(r => r.status === 'pending');
+  const pendingTimeOff = timeOffRequests.filter((r: TimeOffRequest) => r.status === 'pending');
+  const pendingSwaps = swapRequests.filter((r: ShiftSwapRequest) => r.status === 'pending');
 
   return (
     <div className="space-y-6">

@@ -101,19 +101,9 @@ export interface DBPermanentRules {
 }
 
 // Initialize InstantDB
-type Schema = {
-  users: User;
-  timeOffRequests: TimeOffRequest;
-  shiftSwapRequests: ShiftSwapRequest;
-  savedSchedules: SavedSchedule;
-  employees: DBEmployee;
-  appSettings: DBAppSettings;
-  weeklyStaffing: DBWeeklyStaffing;
-  weeklyRules: DBWeeklyRules;
-  permanentRules: DBPermanentRules;
-};
-
-export const db = init<Schema>({ appId: APP_ID });
+// Note: Using untyped init for compatibility with InstantDB 0.22+
+// Schema types are defined separately for our application use
+export const db = init({ appId: APP_ID });
 
 // Export transaction helpers
 export { tx, id };
@@ -160,7 +150,7 @@ export function useCurrentUser() {
 
   return {
     authUser: user,
-    profile: data?.users?.[0] || null,
+    profile: (data?.users?.[0] as User | undefined) || null,
     isLoading,
   };
 }
@@ -184,7 +174,7 @@ export async function updateUserProfile(userId: string, updates: Partial<User>) 
 // Get all users (for manager view)
 export function useAllUsers() {
   const { data, isLoading, error } = db.useQuery({ users: {} });
-  return { users: data?.users || [], isLoading, error };
+  return { users: (data?.users || []) as User[], isLoading, error };
 }
 
 // Check if this is the first user (for auto-admin setup)
@@ -215,7 +205,7 @@ export function useTimeOffRequests(employeeId?: string) {
     : { timeOffRequests: {} };
 
   const { data, isLoading, error } = db.useQuery(query);
-  return { requests: data?.timeOffRequests || [], isLoading, error };
+  return { requests: (data?.timeOffRequests || []) as TimeOffRequest[], isLoading, error };
 }
 
 export async function updateTimeOffRequestStatus(
@@ -251,7 +241,7 @@ export function useShiftSwapRequests(requesterId?: string) {
     : { shiftSwapRequests: {} };
 
   const { data, isLoading, error } = db.useQuery(query);
-  return { requests: data?.shiftSwapRequests || [], isLoading, error };
+  return { requests: (data?.shiftSwapRequests || []) as ShiftSwapRequest[], isLoading, error };
 }
 
 export async function updateShiftSwapRequestStatus(
@@ -277,7 +267,7 @@ export async function saveSchedule(schedule: Omit<SavedSchedule, 'id'>) {
 
 export function useSavedSchedules() {
   const { data, isLoading, error } = db.useQuery({ savedSchedules: {} });
-  return { schedules: data?.savedSchedules || [], isLoading, error };
+  return { schedules: (data?.savedSchedules || []) as SavedSchedule[], isLoading, error };
 }
 
 // ============================================
@@ -321,7 +311,7 @@ function dbEmployeeToEmployee(dbEmp: DBEmployee): Employee {
 export function useEmployees() {
   const { data, isLoading, error } = db.useQuery({ employees: {} });
 
-  const employees: Employee[] = (data?.employees || []).map(dbEmployeeToEmployee);
+  const employees: Employee[] = ((data?.employees || []) as DBEmployee[]).map(dbEmployeeToEmployee);
 
   return { employees, isLoading, error };
 }
@@ -380,7 +370,7 @@ export function useAppSettings() {
     appSettings: { $: { where: { key: 'main' } } }
   });
 
-  const settings = data?.appSettings?.[0];
+  const settings = (data?.appSettings?.[0] as DBAppSettings | undefined);
 
   return {
     logoUrl: settings?.logoUrl || null,
@@ -428,7 +418,7 @@ export function useWeeklyStaffing() {
   const staffingByWeek: Record<string, WeeklyStaffingNeeds> = {};
   const notesByWeek: Record<string, string> = {};
 
-  for (const item of data?.weeklyStaffing || []) {
+  for (const item of ((data?.weeklyStaffing || []) as DBWeeklyStaffing[])) {
     staffingByWeek[item.weekKey] = JSON.parse(item.staffingNeeds);
     if (item.notes) {
       notesByWeek[item.weekKey] = item.notes;
@@ -459,7 +449,7 @@ export async function updateWeeklyStaffing(weekKey: string, staffingNeeds: Weekl
 export function usePermanentRules() {
   const { data, isLoading, error } = db.useQuery({ permanentRules: {} });
 
-  const rulesData = data?.permanentRules?.[0];
+  const rulesData = (data?.permanentRules?.[0] as DBPermanentRules | undefined);
 
   return {
     rules: rulesData?.rules ? JSON.parse(rulesData.rules) as ScheduleOverride[] : [],
@@ -488,7 +478,7 @@ export function useWeeklyRules() {
   const rulesByWeek: Record<string, ScheduleOverride[]> = {};
   const displayByWeek: Record<string, string[]> = {};
 
-  for (const item of data?.weeklyRules || []) {
+  for (const item of ((data?.weeklyRules || []) as DBWeeklyRules[])) {
     rulesByWeek[item.weekKey] = JSON.parse(item.rules);
     displayByWeek[item.weekKey] = JSON.parse(item.rulesDisplay);
   }
