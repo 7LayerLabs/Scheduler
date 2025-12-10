@@ -114,10 +114,27 @@ export default function Home() {
   const [lockedShifts, setLockedShifts] = useState<LockedShift[]>([]);
   const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
-  // Logo from InstantDB
-  const logoUrl = dbLogoUrl;
+  // Logo from InstantDB with local state for optimistic updates
+  const [localLogoUrl, setLocalLogoUrl] = useState<string | null>(null);
+  const logoUrl = localLogoUrl ?? dbLogoUrl;
+
+  // Sync local state with DB when dbLogoUrl changes
+  useEffect(() => {
+    if (dbLogoUrl && !localLogoUrl) {
+      setLocalLogoUrl(dbLogoUrl);
+    }
+  }, [dbLogoUrl]);
+
   const setLogoUrl = async (url: string | null) => {
-    await updateLogoUrl(url);
+    // Optimistically update local state
+    setLocalLogoUrl(url);
+    try {
+      await updateLogoUrl(url);
+    } catch (error) {
+      console.error('Failed to save logo, reverting...', error);
+      // Revert on error
+      setLocalLogoUrl(dbLogoUrl);
+    }
   };
 
   // Profile picture from user profile in InstantDB
