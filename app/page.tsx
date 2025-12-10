@@ -537,6 +537,9 @@ export default function Home() {
   }
 
   // Manager sees full dashboard
+  // Mobile sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   return (
     <div className="flex min-h-screen bg-[#0d0d0f]">
       <Sidebar
@@ -544,15 +547,37 @@ export default function Home() {
         setActiveTab={setActiveTab}
         userRole={currentUser.role}
         logoUrl={logoUrl}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
 
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto lg:ml-0">
         {/* Top Header */}
-        <header className="bg-[#141417] border-b border-[#2a2a32] sticky top-0 z-10">
-          <div className="px-8 py-4">
-            <div className="flex items-center justify-between">
-              {/* Search */}
-              <div className="flex-1 max-w-lg">
+        <header className="bg-[#141417] border-b border-[#2a2a32] sticky top-0 z-30">
+          <div className="px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
+            <div className="flex items-center justify-between gap-4">
+              {/* Mobile menu button */}
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden p-2 text-[#6b6b75] hover:text-white hover:bg-[#1a1a1f] rounded-xl transition-colors"
+              >
+                <MenuIcon className="w-6 h-6" />
+              </button>
+
+              {/* Mobile Logo (show on mobile only) */}
+              <div className="lg:hidden flex items-center gap-2">
+                <div className="w-8 h-8 bg-[#e5a825] rounded-lg flex items-center justify-center overflow-hidden">
+                  {logoUrl ? (
+                    <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-[#0d0d0f] font-bold text-sm">B</span>
+                  )}
+                </div>
+                <span className="font-semibold text-white text-sm">Bobola&apos;s</span>
+              </div>
+
+              {/* Search - hidden on small mobile */}
+              <div className="hidden sm:block flex-1 max-w-lg">
                 <div className="relative group">
                   <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6b6b75] group-focus-within:text-[#e5a825] transition-colors" />
                   <input
@@ -564,7 +589,7 @@ export default function Home() {
               </div>
 
               {/* Right Actions */}
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 sm:gap-4">
                 <button className="relative p-2.5 text-[#6b6b75] hover:text-[#e5a825] hover:bg-[#1a1a1f] rounded-xl transition-all duration-200">
                   <BellIcon className="w-5 h-5" />
                   {(schedule?.conflicts.length || 0) > 0 && (
@@ -651,7 +676,7 @@ export default function Home() {
         </header>
 
         {/* Page Content */}
-        <div className="p-8">
+        <div className="p-4 sm:p-6 lg:p-8">
           {activeTab === 'schedule' && (
             <ScheduleView
               weekStart={weekStart}
@@ -777,6 +802,14 @@ export default function Home() {
 }
 
 // Icon Components
+function MenuIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+    </svg>
+  );
+}
+
 function SearchIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

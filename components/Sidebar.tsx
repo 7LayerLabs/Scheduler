@@ -1,10 +1,14 @@
 'use client';
 
+import { useEffect } from 'react';
+
 interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   userRole?: 'manager' | 'staff';
   logoUrl?: string | null;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 // Icon Components - defined before use
@@ -41,14 +45,6 @@ function SettingsIcon({ className }: { className?: string }) {
   );
 }
 
-function GridIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
-    </svg>
-  );
-}
-
 function NotesIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -57,7 +53,15 @@ function NotesIcon({ className }: { className?: string }) {
   );
 }
 
-export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager', logoUrl }: SidebarProps) {
+function CloseIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  );
+}
+
+export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager', logoUrl, isOpen = true, onClose }: SidebarProps) {
   // Base nav items for all users
   const baseNavItems = [
     { id: 'schedule', label: 'Schedule', icon: CalendarIcon },
@@ -76,56 +80,115 @@ export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager',
     ? [...baseNavItems, ...managerNavItems]
     : baseNavItems;
 
+  // Close sidebar on escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && onClose) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
+
+  // Prevent body scroll when sidebar is open on mobile
+  useEffect(() => {
+    if (isOpen && window.innerWidth < 1024) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
+  const handleNavClick = (tabId: string) => {
+    setActiveTab(tabId);
+    // Close sidebar on mobile after navigation
+    if (onClose && window.innerWidth < 1024) {
+      onClose();
+    }
+  };
+
   return (
-    <aside className="w-64 bg-[#0d0d0f] min-h-screen flex flex-col border-r border-[#2a2a32]">
-      {/* Logo */}
-      <div className="p-6 border-b border-[#2a2a32]">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-[#e5a825] rounded-xl flex items-center justify-center shadow-lg shadow-[#e5a825]/20 transform hover:scale-105 transition-transform overflow-hidden">
-            {logoUrl ? (
-              <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-[#0d0d0f] font-bold text-xl">B</span>
-            )}
-          </div>
-          <div>
-            <h1 className="font-bold text-white text-lg tracking-tight">Bobola&apos;s</h1>
-            <p className="text-xs text-[#6b6b75] font-medium">Schedule Manager</p>
+    <>
+      {/* Mobile overlay */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-40 lg:hidden backdrop-blur-sm"
+          onClick={onClose}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={`
+          fixed lg:static inset-y-0 left-0 z-50
+          w-64 bg-[#0d0d0f] min-h-screen flex flex-col border-r border-[#2a2a32]
+          transform transition-transform duration-300 ease-in-out
+          ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+          lg:translate-x-0
+        `}
+      >
+        {/* Logo */}
+        <div className="p-4 sm:p-6 border-b border-[#2a2a32]">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 sm:w-11 sm:h-11 bg-[#e5a825] rounded-xl flex items-center justify-center shadow-lg shadow-[#e5a825]/20 transform hover:scale-105 transition-transform overflow-hidden">
+                {logoUrl ? (
+                  <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-[#0d0d0f] font-bold text-lg sm:text-xl">B</span>
+                )}
+              </div>
+              <div>
+                <h1 className="font-bold text-white text-base sm:text-lg tracking-tight">Bobola&apos;s</h1>
+                <p className="text-xs text-[#6b6b75] font-medium">Schedule Manager</p>
+              </div>
+            </div>
+            {/* Mobile close button */}
+            <button
+              onClick={onClose}
+              className="lg:hidden p-2 text-[#6b6b75] hover:text-white hover:bg-[#1a1a1f] rounded-lg transition-colors"
+            >
+              <CloseIcon className="w-5 h-5" />
+            </button>
           </div>
         </div>
-      </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 p-4">
-        <ul className="space-y-1.5">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            return (
-              <li key={item.id}>
-                <button
-                  onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
-                    isActive
-                      ? 'bg-[#e5a825] text-[#0d0d0f] shadow-lg shadow-[#e5a825]/20'
-                      : 'text-[#a0a0a8] hover:bg-[#1a1a1f] hover:text-white'
-                  }`}
-                >
-                  <Icon className={`w-5 h-5 ${isActive ? 'text-[#0d0d0f]' : 'text-[#6b6b75]'}`} />
-                  {item.label}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
+        {/* Navigation */}
+        <nav className="flex-1 p-3 sm:p-4">
+          <ul className="space-y-1">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <li key={item.id}>
+                  <button
+                    onClick={() => handleNavClick(item.id)}
+                    className={`w-full flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
+                      isActive
+                        ? 'bg-[#e5a825] text-[#0d0d0f] shadow-lg shadow-[#e5a825]/20'
+                        : 'text-[#a0a0a8] hover:bg-[#1a1a1f] hover:text-white'
+                    }`}
+                  >
+                    <Icon className={`w-5 h-5 ${isActive ? 'text-[#0d0d0f]' : 'text-[#6b6b75]'}`} />
+                    {item.label}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
 
-      {/* Footer - Removed user profile since it's now in header */}
-      <div className="p-4 border-t border-[#2a2a32]">
-        <p className="text-xs text-[#6b6b75] text-center">
-          {userRole === 'manager' ? 'Manager Access' : 'Staff Access'}
-        </p>
-      </div>
-    </aside>
+        {/* Footer */}
+        <div className="p-4 border-t border-[#2a2a32]">
+          <p className="text-xs text-[#6b6b75] text-center">
+            {userRole === 'manager' ? 'Manager Access' : 'Staff Access'}
+          </p>
+        </div>
+      </aside>
+    </>
   );
 }

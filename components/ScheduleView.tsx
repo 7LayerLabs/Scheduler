@@ -404,28 +404,29 @@ export default function ScheduleView({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Page Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white">Schedule</h1>
-          <p className="text-sm text-[#6b6b75] mt-1">Manage your weekly staff schedule</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Schedule</h1>
+          <p className="text-xs sm:text-sm text-[#6b6b75] mt-1">Manage your weekly staff schedule</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           {schedule && (
             <button
               onClick={() => setShowClearConfirm(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#ef4444]/10 hover:bg-[#ef4444]/20 text-[#ef4444] text-sm font-semibold rounded-xl transition-all duration-200 border border-[#ef4444]/30 hover:border-[#ef4444]/50"
+              className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-[#ef4444]/10 hover:bg-[#ef4444]/20 text-[#ef4444] text-xs sm:text-sm font-semibold rounded-xl transition-all duration-200 border border-[#ef4444]/30 hover:border-[#ef4444]/50"
             >
               <TrashIcon className="w-4 h-4" />
-              Clear Schedule
+              <span className="hidden sm:inline">Clear Schedule</span>
+              <span className="sm:hidden">Clear</span>
             </button>
           )}
 
           {schedule && (
             <button
               onClick={handlePrintSchedule}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#1a1a1f] hover:bg-[#222228] text-white text-sm font-semibold rounded-xl transition-all duration-200 border border-[#2a2a32] hover:border-[#3a3a45]"
+              className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-[#1a1a1f] hover:bg-[#222228] text-white text-xs sm:text-sm font-semibold rounded-xl transition-all duration-200 border border-[#2a2a32] hover:border-[#3a3a45]"
             >
               <PrintIcon className="w-4 h-4" />
               Print
@@ -468,17 +469,19 @@ export default function ScheduleView({
           <button
             onClick={handleGenerate}
             disabled={isGenerating}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#e5a825] hover:bg-[#f0b429] disabled:bg-[#3a3a45] text-[#0d0d0f] disabled:text-[#6b6b75] text-sm font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-[#e5a825]/20 hover:shadow-[#e5a825]/40 hover:scale-[1.02] active:scale-[0.98]"
+            className="inline-flex items-center gap-1.5 sm:gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-[#e5a825] hover:bg-[#f0b429] disabled:bg-[#3a3a45] text-[#0d0d0f] disabled:text-[#6b6b75] text-xs sm:text-sm font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-[#e5a825]/20 hover:shadow-[#e5a825]/40 hover:scale-[1.02] active:scale-[0.98]"
           >
             {isGenerating ? (
               <>
                 <LoadingSpinner />
-                Generating...
+                <span className="hidden sm:inline">Generating...</span>
+                <span className="sm:hidden">...</span>
               </>
             ) : (
               <>
                 <SparklesIcon className="w-4 h-4" />
-                {schedule ? 'Regenerate' : 'Generate Schedule'}
+                <span className="hidden sm:inline">{schedule ? 'Regenerate' : 'Generate Schedule'}</span>
+                <span className="sm:hidden">{schedule ? 'Regen' : 'Generate'}</span>
               </>
             )}
           </button>
@@ -486,7 +489,7 @@ export default function ScheduleView({
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard
           label="Total Shifts"
           value={stats.totalShifts}
@@ -518,8 +521,8 @@ export default function ScheduleView({
       </div>
 
       {/* Week Notes - Quick input for this week's scheduling instructions */}
-      <div className="bg-[#1a1a1f] rounded-2xl border border-[#2a2a32] p-5 hover:border-[#3a3a45] transition-colors duration-200">
-        <div className="flex items-start gap-4">
+      <div className="bg-[#1a1a1f] rounded-2xl border border-[#2a2a32] p-4 sm:p-5 hover:border-[#3a3a45] transition-colors duration-200">
+        <div className="flex flex-col lg:flex-row lg:items-start gap-4">
           {/* Left: Input */}
           <div className="flex-1">
             <label className="block text-sm font-semibold text-[#a0a0a8] mb-2">
@@ -552,7 +555,7 @@ export default function ScheduleView({
           </div>
 
           {/* Middle: Apply Buttons */}
-          <div className="flex flex-col items-center justify-center gap-2 pt-6">
+          <div className="flex lg:flex-col items-center justify-center gap-4 lg:gap-2 lg:pt-6">
             {/* This Week Button */}
             <div className="flex flex-col items-center">
               <button
@@ -588,7 +591,7 @@ export default function ScheduleView({
           </div>
 
           {/* Right: Active Rules (Two Sections) */}
-          <div className="w-72 space-y-2">
+          <div className="w-full lg:w-72 space-y-2">
             {/* This Week Rules */}
             <div>
               <div className="flex items-center justify-between mb-1">

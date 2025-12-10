@@ -214,23 +214,24 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-white">Team</h1>
-          <p className="text-sm text-[#6b6b75] mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Team</h1>
+          <p className="text-xs sm:text-sm text-[#6b6b75] mt-1">
             {employees.length} team members
           </p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="px-5 py-2.5 bg-[#e5a825] hover:bg-[#f0b429] text-[#0d0d0f] text-sm font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-[#e5a825]/20 hover:shadow-[#e5a825]/40 hover:scale-[1.02] flex items-center gap-2"
+          className="px-3 sm:px-5 py-2 sm:py-2.5 bg-[#e5a825] hover:bg-[#f0b429] text-[#0d0d0f] text-sm font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-[#e5a825]/20 hover:shadow-[#e5a825]/40 hover:scale-[1.02] flex items-center gap-2"
         >
           <PlusIcon className="w-5 h-5" />
-          Add Employee
+          <span className="hidden sm:inline">Add Employee</span>
+          <span className="sm:hidden">Add</span>
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
         {/* Employee List */}
-        <div className="col-span-2 bg-[#1a1a1f] rounded-2xl border border-[#2a2a32] overflow-hidden hover:border-[#3a3a45] transition-colors duration-200">
+        <div className="lg:col-span-2 bg-[#1a1a1f] rounded-2xl border border-[#2a2a32] overflow-hidden hover:border-[#3a3a45] transition-colors duration-200">
           {/* Search */}
           <div className="p-4 border-b border-[#2a2a32]">
             <div className="relative">
@@ -245,8 +246,52 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
             </div>
           </div>
 
-          {/* Table */}
-          <div className="overflow-x-auto">
+          {/* Mobile Card View */}
+          <div className="md:hidden divide-y divide-[#2a2a32]">
+            {filteredEmployees.map((emp) => (
+              <div
+                key={emp.id}
+                onClick={() => {
+                  setSelectedEmployee(emp);
+                  setIsEditing(false);
+                }}
+                className={`p-4 cursor-pointer transition-colors ${selectedEmployee?.id === emp.id
+                  ? 'bg-[#e5a825]/10'
+                  : 'hover:bg-[#222228]'
+                  }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-[#a855f7] rounded-full flex items-center justify-center">
+                      <span className="text-white font-medium text-sm">
+                        {emp.name.charAt(0)}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-white">{emp.name}</p>
+                      <p className="text-xs text-[#6b6b75]">
+                        {emp.bartendingScale >= 4 ? 'Bartender' : 'Server'}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${emp.exclusions.length > 0
+                    ? 'bg-[#e5a825]/10 text-[#e5a825] border border-[#e5a825]/30'
+                    : 'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
+                    }`}>
+                    {emp.exclusions.length > 0 ? 'Exclusions' : 'Available'}
+                  </span>
+                </div>
+                <div className="mt-2 flex items-center gap-4 text-xs text-[#6b6b75]">
+                  <span>Bar: {getSkillStars(emp.bartendingScale)}</span>
+                  <span>Solo: {getSkillStars(emp.aloneScale)}</span>
+                  {emp.minShiftsPerWeek && <span>Min: {emp.minShiftsPerWeek}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
               <thead className="bg-[#141417]">
                 <tr>
@@ -349,8 +394,9 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
           </div>
         </div>
 
-        {/* Employee Details Panel */}
-        <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-6 max-h-[calc(100vh-200px)] overflow-y-auto">
+        {/* Employee Details Panel - Desktop Sidebar / Mobile Modal */}
+        {/* Desktop version */}
+        <div className="hidden lg:block bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-6 max-h-[calc(100vh-200px)] overflow-y-auto">
           {selectedEmployee ? (
             <div>
               {/* Header */}
@@ -730,6 +776,186 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
         </div>
       </div>
 
+      {/* Mobile Employee Details Modal */}
+      {selectedEmployee && (
+        <div className="lg:hidden fixed inset-0 bg-black/70 z-50 backdrop-blur-sm">
+          <div className="absolute inset-x-0 bottom-0 bg-[#1a1a1f] rounded-t-2xl border-t border-[#2a2a32] max-h-[85vh] overflow-y-auto">
+            {/* Mobile Modal Header */}
+            <div className="sticky top-0 bg-[#1a1a1f] p-4 border-b border-[#2a2a32] flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-[#a855f7] rounded-full flex items-center justify-center">
+                  <span className="text-white font-semibold">
+                    {(isEditing ? editName : selectedEmployee.name).charAt(0)}
+                  </span>
+                </div>
+                <div>
+                  {isEditing ? (
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="text-base font-semibold text-white bg-[#141417] border border-[#2a2a32] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
+                    />
+                  ) : (
+                    <h3 className="text-base font-semibold text-white">{selectedEmployee.name}</h3>
+                  )}
+                  <p className="text-xs text-[#6b6b75]">
+                    {(isEditing ? editBartending : selectedEmployee.bartendingScale) >= 4 ? 'Bartender' : 'Server'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {!isEditing && (
+                  <button
+                    onClick={startEditing}
+                    className="p-2 text-[#6b6b75] hover:text-[#e5a825] rounded-lg"
+                  >
+                    <EditIcon className="w-5 h-5" />
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setSelectedEmployee(null);
+                    setIsEditing(false);
+                  }}
+                  className="p-2 text-[#6b6b75] hover:text-white rounded-lg"
+                >
+                  <CloseIcon className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Mobile Modal Content */}
+            <div className="p-4 space-y-4">
+              {/* Skills */}
+              <div className="space-y-3">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm text-[#a0a0a8]">Bartending</span>
+                    {isEditing ? (
+                      <span className="text-sm">{getSkillStars(editBartending, true, setEditBartending)}</span>
+                    ) : (
+                      <span className="text-sm font-medium text-white">{selectedEmployee.bartendingScale}/5</span>
+                    )}
+                  </div>
+                  <div className="w-full h-2 bg-[#2a2a32] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#3b82f6] rounded-full"
+                      style={{ width: `${((isEditing ? editBartending : selectedEmployee.bartendingScale) / 5) * 100}%` }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm text-[#a0a0a8]">Solo Work</span>
+                    {isEditing ? (
+                      <span className="text-sm">{getSkillStars(editAlone, true, setEditAlone)}</span>
+                    ) : (
+                      <span className="text-sm font-medium text-white">{selectedEmployee.aloneScale}/5</span>
+                    )}
+                  </div>
+                  <div className="w-full h-2 bg-[#2a2a32] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#22c55e] rounded-full"
+                      style={{ width: `${((isEditing ? editAlone : selectedEmployee.aloneScale) / 5) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Min Shifts */}
+              <div className="flex items-center justify-between py-2 border-t border-[#2a2a32]">
+                <span className="text-sm text-[#a0a0a8]">Minimum Shifts/Week</span>
+                {isEditing ? (
+                  <input
+                    type="number"
+                    min="0"
+                    max="6"
+                    value={editMinShifts || ''}
+                    onChange={(e) => setEditMinShifts(e.target.value ? parseInt(e.target.value) : undefined)}
+                    placeholder="-"
+                    className="w-16 text-center bg-[#141417] border border-[#2a2a32] rounded px-2 py-1 text-sm text-white"
+                  />
+                ) : (
+                  <span className="text-sm font-medium text-white">{selectedEmployee.minShiftsPerWeek || '-'}</span>
+                )}
+              </div>
+
+              {/* Availability - View Mode */}
+              {!isEditing && (
+                <div className="border-t border-[#2a2a32] pt-4">
+                  <h4 className="text-sm font-medium text-white mb-3">Availability</h4>
+                  <div className="space-y-2">
+                    {dayLabels.map(({ key, label }) => {
+                      const dayAvail = selectedEmployee.availability[key] as DayAvailability | null;
+                      const shifts = dayAvail?.shifts || [];
+                      const isSunday = key === 'sunday';
+
+                      const shiftOptions: { label: string; type: 'any' | 'morning' | 'mid' | 'night' }[] = [
+                        { label: 'Open', type: 'any' },
+                        { label: 'AM', type: 'morning' },
+                        { label: 'Mid', type: 'mid' },
+                        ...(isSunday ? [] : [{ label: 'PM', type: 'night' as const }])
+                      ];
+
+                      return (
+                        <div key={key} className="flex items-center gap-2">
+                          <span className="w-8 text-xs font-medium text-[#6b6b75]">{label}</span>
+                          <div className="flex gap-1 flex-wrap">
+                            {shiftOptions.map(({ label: shiftLabel, type }) => {
+                              const isSelected = shifts.some(s => s.type === type);
+                              return (
+                                <span
+                                  key={type}
+                                  className={`px-2 py-0.5 text-xs rounded font-medium ${isSelected
+                                      ? 'bg-[#e5a825] text-[#0d0d0f]'
+                                      : 'bg-[#2a2a32] text-[#6b6b75]'
+                                    }`}
+                                >
+                                  {shiftLabel}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="pt-4 border-t border-[#2a2a32]">
+                {isEditing ? (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={saveChanges}
+                      className="flex-1 px-4 py-2.5 bg-[#e5a825] text-[#0d0d0f] rounded-lg font-medium"
+                    >
+                      Save Changes
+                    </button>
+                    <button
+                      onClick={cancelEditing}
+                      className="px-4 py-2.5 bg-[#2a2a32] text-[#a0a0a8] rounded-lg"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="w-full px-4 py-2.5 bg-[#ef4444]/10 text-[#ef4444] rounded-lg flex items-center justify-center gap-2 border border-[#ef4444]/30"
+                  >
+                    <TrashIcon className="w-4 h-4" />
+                    Remove Employee
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add Employee Modal */}
       {showAddModal && (
         <AddEmployeeModal
@@ -890,6 +1116,14 @@ function AddEmployeeModal({ onAdd, onClose }: { onAdd: (emp: Employee) => void; 
 }
 
 // Icon Components
+function CloseIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  );
+}
+
 function SearchIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

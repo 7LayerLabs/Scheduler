@@ -287,23 +287,23 @@ export default function NotesAndStaffingView({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Page Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0">
         <div>
-          <h1 className="text-3xl font-bold text-white">Schedule Notes & Staffing</h1>
-          <p className="text-sm text-[#6b6b75] mt-1">Add notes and configure time slots for each day</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Notes & Staffing</h1>
+          <p className="text-xs sm:text-sm text-[#6b6b75] mt-1">Add notes and configure time slots</p>
         </div>
 
         {/* Week Navigation */}
-        <div className="flex items-center bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-1">
+        <div className="flex items-center bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-1 self-start sm:self-auto">
           <button
             onClick={() => changeWeek(-1)}
             className="p-2 hover:bg-[#222228] text-[#6b6b75] hover:text-white rounded-lg transition-colors"
           >
             <ChevronLeftIcon className="w-5 h-5" />
           </button>
-          <span className="px-4 py-1 text-sm font-medium text-white min-w-[200px] text-center">
+          <span className="px-2 sm:px-4 py-1 text-xs sm:text-sm font-medium text-white min-w-[140px] sm:min-w-[200px] text-center">
             {formatWeekRange(weekStart)}
           </span>
           <button
@@ -316,12 +316,12 @@ export default function NotesAndStaffingView({
       </div>
 
       {/* Schedule Notes Section */}
-      <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-6">
-        <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+      <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-4 sm:p-6">
+        <h2 className="text-lg sm:text-xl font-semibold text-white mb-4 flex items-center gap-2">
           <NotesIcon className="w-5 h-5 text-[#e5a825]" />
           Schedule Notes
         </h2>
-        <div className="flex gap-4 items-stretch">
+        <div className="flex flex-col md:flex-row gap-4 items-stretch">
           {/* Left: Instructions Input */}
           <div className="flex-1">
             <label className="block text-sm font-medium text-[#a0a0a8] mb-2">
@@ -355,7 +355,7 @@ Examples:
           </div>
 
           {/* Middle: Two Arrow Buttons */}
-          <div className="flex flex-col items-center justify-center gap-4 px-2">
+          <div className="flex flex-row md:flex-col items-center justify-center gap-4 px-2 py-2 md:py-0">
             {/* This Week Only Button */}
             <div className="flex flex-col items-center">
               <button
