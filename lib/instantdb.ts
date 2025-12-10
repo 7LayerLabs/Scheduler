@@ -384,15 +384,20 @@ export function useAppSettings() {
 
 // Update logo URL
 export async function updateLogoUrl(logoUrl: string | null) {
-  // First check if settings exist
-  const settingsId = 'main-settings';
-  await db.transact(
-    tx.appSettings[settingsId].update({
-      key: 'main',
-      logoUrl: logoUrl || undefined,
-      updatedAt: Date.now(),
-    })
-  );
+  try {
+    const settingsId = 'main-settings';
+    await db.transact(
+      tx.appSettings[settingsId].update({
+        key: 'main',
+        logoUrl: logoUrl || undefined,
+        updatedAt: Date.now(),
+      })
+    );
+    console.log('Logo URL saved successfully');
+  } catch (error) {
+    console.error('Failed to save logo URL:', error);
+    throw error;
+  }
 }
 
 // Update default staffing template
