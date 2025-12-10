@@ -22,11 +22,13 @@ interface Props {
   setPermanentRules: (rules: ScheduleOverride[]) => void;
   permanentRulesDisplay: string[];
   setPermanentRulesDisplay: (display: string[]) => void;
+  setPermanentRulesAndDisplay?: (rules: ScheduleOverride[], display: string[]) => void;
   // Week-specific rules (only for current week)
   weekLockedRules: ScheduleOverride[];
   setWeekLockedRules: (rules: ScheduleOverride[]) => void;
   weekLockedRulesDisplay: string[];
   setWeekLockedRulesDisplay: (display: string[]) => void;
+  setWeekLockedRulesAndDisplay?: (rules: ScheduleOverride[], display: string[]) => void;
 }
 
 export default function NotesAndStaffingView({
@@ -45,10 +47,12 @@ export default function NotesAndStaffingView({
   setPermanentRules,
   permanentRulesDisplay,
   setPermanentRulesDisplay,
+  setPermanentRulesAndDisplay,
   weekLockedRules,
   setWeekLockedRules,
   weekLockedRulesDisplay,
-  setWeekLockedRulesDisplay
+  setWeekLockedRulesDisplay,
+  setWeekLockedRulesAndDisplay
 }: Props) {
   const [parsedPreview, setParsedPreview] = useState<string[]>([]);
   const [parsedRules, setParsedRules] = useState<ScheduleOverride[]>([]);
@@ -88,8 +92,13 @@ export default function NotesAndStaffingView({
       const newRules = [...weekLockedRules, ...freshParsed];
       const newDisplay = [...weekLockedRulesDisplay, ...freshDisplay];
       console.log('Setting week rules:', newRules.length);
-      setWeekLockedRules(newRules);
-      setWeekLockedRulesDisplay(newDisplay);
+      // Use combined setter to avoid race condition, fall back to individual setters
+      if (setWeekLockedRulesAndDisplay) {
+        setWeekLockedRulesAndDisplay(newRules, newDisplay);
+      } else {
+        setWeekLockedRules(newRules);
+        setWeekLockedRulesDisplay(newDisplay);
+      }
       // Clear input and parsed state after applying
       setNotes('');
       setParsedPreview([]);
@@ -108,8 +117,13 @@ export default function NotesAndStaffingView({
       const newRules = [...permanentRules, ...freshParsed];
       const newDisplay = [...permanentRulesDisplay, ...freshDisplay];
       console.log('Setting permanent rules:', newRules.length);
-      setPermanentRules(newRules);
-      setPermanentRulesDisplay(newDisplay);
+      // Use combined setter to avoid race condition, fall back to individual setters
+      if (setPermanentRulesAndDisplay) {
+        setPermanentRulesAndDisplay(newRules, newDisplay);
+      } else {
+        setPermanentRules(newRules);
+        setPermanentRulesDisplay(newDisplay);
+      }
       // Clear input and parsed state after applying
       setNotes('');
       setParsedPreview([]);
@@ -119,26 +133,46 @@ export default function NotesAndStaffingView({
 
   // Clear week-specific rules
   const handleClearWeekRules = () => {
-    setWeekLockedRules([]);
-    setWeekLockedRulesDisplay([]);
+    if (setWeekLockedRulesAndDisplay) {
+      setWeekLockedRulesAndDisplay([], []);
+    } else {
+      setWeekLockedRules([]);
+      setWeekLockedRulesDisplay([]);
+    }
   };
 
   // Clear permanent rules
   const handleClearPermanentRules = () => {
-    setPermanentRules([]);
-    setPermanentRulesDisplay([]);
+    if (setPermanentRulesAndDisplay) {
+      setPermanentRulesAndDisplay([], []);
+    } else {
+      setPermanentRules([]);
+      setPermanentRulesDisplay([]);
+    }
   };
 
   // Remove single permanent rule
   const handleRemovePermanentRule = (index: number) => {
-    setPermanentRules(permanentRules.filter((_, i) => i !== index));
-    setPermanentRulesDisplay(permanentRulesDisplay.filter((_, i) => i !== index));
+    const newRules = permanentRules.filter((_, i) => i !== index);
+    const newDisplay = permanentRulesDisplay.filter((_, i) => i !== index);
+    if (setPermanentRulesAndDisplay) {
+      setPermanentRulesAndDisplay(newRules, newDisplay);
+    } else {
+      setPermanentRules(newRules);
+      setPermanentRulesDisplay(newDisplay);
+    }
   };
 
   // Remove single week rule
   const handleRemoveWeekRule = (index: number) => {
-    setWeekLockedRules(weekLockedRules.filter((_, i) => i !== index));
-    setWeekLockedRulesDisplay(weekLockedRulesDisplay.filter((_, i) => i !== index));
+    const newRules = weekLockedRules.filter((_, i) => i !== index);
+    const newDisplay = weekLockedRulesDisplay.filter((_, i) => i !== index);
+    if (setWeekLockedRulesAndDisplay) {
+      setWeekLockedRulesAndDisplay(newRules, newDisplay);
+    } else {
+      setWeekLockedRules(newRules);
+      setWeekLockedRulesDisplay(newDisplay);
+    }
   };
 
   const days: { key: keyof WeeklyStaffingNeeds; label: string; fullLabel: string }[] = [

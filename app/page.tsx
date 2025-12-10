@@ -87,6 +87,12 @@ export default function Home() {
   const permanentRules = dbPermanentRules || [];
   const permanentRulesDisplay = dbPermanentRulesDisplay || [];
 
+  // Combined setter to avoid race conditions - updates both rules and display atomically
+  const setPermanentRulesAndDisplay = async (rules: ScheduleOverride[], display: string[]) => {
+    await updatePermanentRules(rules, display);
+  };
+
+  // Legacy setters for backwards compatibility - use combined setter when possible
   const setPermanentRules = async (rules: ScheduleOverride[]) => {
     await updatePermanentRules(rules, permanentRulesDisplay);
   };
@@ -100,6 +106,12 @@ export default function Home() {
   const weekLockedRules = dbRulesByWeek[currentWeekKey] || [];
   const weekLockedRulesDisplay = dbDisplayByWeek[currentWeekKey] || [];
 
+  // Combined setter to avoid race conditions - updates both rules and display atomically
+  const setWeekLockedRulesAndDisplay = async (rules: ScheduleOverride[], display: string[]) => {
+    await updateWeeklyRulesForWeek(currentWeekKey, rules, display);
+  };
+
+  // Legacy setters for backwards compatibility - use combined setter when possible
   const setWeekLockedRules = async (rules: ScheduleOverride[]) => {
     await updateWeeklyRulesForWeek(currentWeekKey, rules, weekLockedRulesDisplay);
   };
@@ -642,10 +654,12 @@ export default function Home() {
               setPermanentRules={setPermanentRules}
               permanentRulesDisplay={permanentRulesDisplay}
               setPermanentRulesDisplay={setPermanentRulesDisplay}
+              setPermanentRulesAndDisplay={setPermanentRulesAndDisplay}
               weekLockedRules={weekLockedRules}
               setWeekLockedRules={setWeekLockedRules}
               weekLockedRulesDisplay={weekLockedRulesDisplay}
               setWeekLockedRulesDisplay={setWeekLockedRulesDisplay}
+              setWeekLockedRulesAndDisplay={setWeekLockedRulesAndDisplay}
             />
           )}
 
