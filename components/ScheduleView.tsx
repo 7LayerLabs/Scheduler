@@ -32,6 +32,16 @@ interface Props {
   overrides: ScheduleOverride[];
   setOverrides: (overrides: ScheduleOverride[]) => void;
   staffingNeeds: WeeklyStaffingNeeds;
+  // Week-specific rules (optional - may not be passed initially)
+  weekLockedRules?: ScheduleOverride[];
+  setWeekLockedRules?: (rules: ScheduleOverride[]) => void;
+  weekLockedRulesDisplay?: string[];
+  setWeekLockedRulesDisplay?: (display: string[]) => void;
+  // Permanent rules (all weeks)
+  permanentRules?: ScheduleOverride[];
+  setPermanentRules?: (rules: ScheduleOverride[]) => void;
+  permanentRulesDisplay?: string[];
+  setPermanentRulesDisplay?: (display: string[]) => void;
 }
 
 export default function ScheduleView({
@@ -51,60 +61,394 @@ export default function ScheduleView({
   setNotes,
   setOverrides,
   staffingNeeds,
+  weekLockedRules,
+  setWeekLockedRules,
+  weekLockedRulesDisplay,
+  setWeekLockedRulesDisplay,
+  permanentRules,
+  setPermanentRules,
+  permanentRulesDisplay,
+  setPermanentRulesDisplay,
 }: Props) {
   const [parsedPreview, setParsedPreview] = useState<string[]>([]);
+  const [parsedRules, setParsedRules] = useState<ScheduleOverride[]>([]);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
-  // Parse notes as user types
+  // Format time to 12h format
+  const formatTime12h = (time: string): string => {
+    if (!time) return '';
+    const [hours, minutes] = time.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    let hour12 = hours % 12;
+    if (hour12 === 0) hour12 = 12;
+    return `${hour12}:${minutes.toString().padStart(2, '0')} ${period}`;
+  };
+
+  // Print schedule function
+  const handlePrintSchedule = () => {
+    if (!schedule) return;
+
+    const weekRange = formatWeekRange(weekStart);
+    const scheduleDays = ['tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const dayLabelsFull: Record<string, string> = {
+      tuesday: 'Tuesday', wednesday: 'Wednesday', thursday: 'Thursday',
+      friday: 'Friday', saturday: 'Saturday', sunday: 'Sunday'
+    };
+    const dayOffsets: Record<string, number> = {
+      tuesday: 1, wednesday: 2, thursday: 3,
+      friday: 4, saturday: 5, sunday: 6
+    };
+
+    // Get actual date for each day
+    const getDateForDay = (day: string): number => {
+      const date = new Date(weekStart);
+      date.setDate(date.getDate() + dayOffsets[day]);
+      return date.getDate();
+    };
+
+    // Group assignments by day
+    const assignmentsByDay: Record<string, typeof schedule.assignments> = {};
+    for (const day of scheduleDays) {
+      assignmentsByDay[day] = [];
+    }
+
+    for (const assignment of schedule.assignments) {
+      const shiftIdLower = assignment.shiftId.toLowerCase();
+      for (const day of scheduleDays) {
+        const abbrev = day.substring(0, 3);
+        if (shiftIdLower.startsWith(day) || shiftIdLower.startsWith(abbrev + '-')) {
+          assignmentsByDay[day].push(assignment);
+          break;
+        }
+      }
+    }
+
+    // Sort each day's assignments by start time
+    for (const day of scheduleDays) {
+      assignmentsByDay[day].sort((a, b) => {
+        const aTime = a.startTime || '00:00';
+        const bTime = b.startTime || '00:00';
+        return aTime.localeCompare(bTime);
+      });
+    }
+
+    // Build HTML table cells for each day
+    const maxRows = Math.max(...scheduleDays.map(d => assignmentsByDay[d].length), 1);
+
+    let tableContent = '';
+    for (const day of scheduleDays) {
+      const dayAssignments = assignmentsByDay[day];
+      const dayDate = getDateForDay(day);
+      let cellContent = '';
+
+      if (dayAssignments.length === 0) {
+        cellContent = '<div class="empty">No shifts</div>';
+      } else {
+        for (const assignment of dayAssignments) {
+          const emp = employees.find(e => e.id === assignment.employeeId);
+          const name = emp?.name || 'Unknown';
+          const start = assignment.startTime ? formatTime12h(assignment.startTime) : '';
+          const end = assignment.endTime ? formatTime12h(assignment.endTime) : '';
+          cellContent += `
+            <div class="shift">
+              <div class="name">${name}</div>
+              <div class="time">${start} - ${end}</div>
+            </div>
+          `;
+        }
+      }
+
+      tableContent += `
+        <div class="day-column">
+          <div class="day-header">
+            <div class="day-name">${dayLabelsFull[day]}</div>
+            <div class="day-date">${dayDate}</div>
+          </div>
+          <div class="day-content">${cellContent}</div>
+        </div>
+      `;
+    }
+
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Schedule - ${weekRange}</title>
+        <style>
+          @page {
+            size: landscape;
+            margin: 0.4in;
+          }
+          * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+          }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 20px;
+            background: white;
+            color: #1a1a1a;
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 3px solid #e5a825;
+          }
+          .logo {
+            font-size: 32px;
+            font-weight: 800;
+            color: #1a1a1a;
+            letter-spacing: -0.5px;
+            margin-bottom: 4px;
+          }
+          .logo span {
+            color: #e5a825;
+          }
+          .week-range {
+            font-size: 16px;
+            color: #666;
+            font-weight: 500;
+          }
+          .schedule-grid {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+          }
+          .day-column {
+            flex: 1;
+            min-width: 0;
+          }
+          .day-header {
+            background: linear-gradient(135deg, #1a1a1a 0%, #333 100%);
+            color: white;
+            padding: 10px 8px;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
+          }
+          .day-name {
+            font-weight: 700;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .day-date {
+            font-size: 22px;
+            font-weight: 800;
+            margin-top: 2px;
+            color: #e5a825;
+          }
+          .day-content {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            min-height: 200px;
+            padding: 8px;
+          }
+          .shift {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-left: 4px solid #e5a825;
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+          }
+          .shift:last-child {
+            margin-bottom: 0;
+          }
+          .name {
+            font-weight: 700;
+            font-size: 14px;
+            color: #1a1a1a;
+            margin-bottom: 4px;
+          }
+          .time {
+            font-size: 12px;
+            color: #666;
+            font-weight: 500;
+          }
+          .empty {
+            color: #adb5bd;
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+            font-size: 13px;
+          }
+          .footer {
+            margin-top: 20px;
+            padding-top: 12px;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #999;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="logo">Bobola<span>'</span>s</div>
+          <div class="week-range">Week of ${weekRange}</div>
+        </div>
+        <div class="schedule-grid">
+          ${tableContent}
+        </div>
+        <div class="footer">
+          <span>Staff Schedule</span>
+          <span>Printed ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank', 'width=1000,height=700');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.focus();
+      // Wait for content to load before printing
+      printWindow.onload = () => {
+        setTimeout(() => {
+          printWindow.print();
+        }, 100);
+      };
+      // Fallback if onload doesn't fire
+      setTimeout(() => {
+        printWindow.print();
+      }, 500);
+    } else {
+      alert('Please allow pop-ups to print the schedule');
+    }
+  };
+
+  // Parse notes as user types (preview only - user must click button to apply)
   useEffect(() => {
     if (notes.trim()) {
-      const parsed = parseScheduleNotes(notes, employees);
+      const parsed = parseScheduleNotes(notes, employees, weekStart);
       const formatted = formatParsedOverrides(parsed, employees);
       setParsedPreview(formatted);
-      setOverrides(parsed);
+      setParsedRules(parsed);
     } else {
       setParsedPreview([]);
-      setOverrides([]);
+      setParsedRules([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notes, employees]); // Don't include setOverrides to prevent infinite loop
+  }, [notes, employees, weekStart]);
+
+  // Ensure arrays are never undefined
+  const safeWeekLockedRules = weekLockedRules || [];
+  const safeWeekLockedRulesDisplay = weekLockedRulesDisplay || [];
+  const safePermanentRules = permanentRules || [];
+  const safePermanentRulesDisplay = permanentRulesDisplay || [];
+
+  // Apply rules to this week only
+  const handleApplyWeekRules = () => {
+    if (parsedRules.length > 0 && setWeekLockedRules && setWeekLockedRulesDisplay) {
+      const newRules = [...safeWeekLockedRules, ...parsedRules];
+      const newDisplay = [...safeWeekLockedRulesDisplay, ...parsedPreview];
+      setWeekLockedRules(newRules);
+      setWeekLockedRulesDisplay(newDisplay);
+      // Clear input after applying
+      setNotes('');
+      setParsedPreview([]);
+      setParsedRules([]);
+    }
+  };
+
+  // Apply rules permanently (all weeks - persists after refresh)
+  const handleApplyPermanentRules = () => {
+    if (parsedRules.length > 0 && setPermanentRules && setPermanentRulesDisplay) {
+      const newRules = [...safePermanentRules, ...parsedRules];
+      const newDisplay = [...safePermanentRulesDisplay, ...parsedPreview];
+      setPermanentRules(newRules);
+      setPermanentRulesDisplay(newDisplay);
+      // Clear input after applying
+      setNotes('');
+      setParsedPreview([]);
+      setParsedRules([]);
+    }
+  };
+
+  // Clear week rules
+  const handleClearWeekRules = () => {
+    if (setWeekLockedRules && setWeekLockedRulesDisplay) {
+      setWeekLockedRules([]);
+      setWeekLockedRulesDisplay([]);
+    }
+  };
+
+  // Clear permanent rules
+  const handleClearPermanentRules = () => {
+    if (setPermanentRules && setPermanentRulesDisplay) {
+      setPermanentRules([]);
+      setPermanentRulesDisplay([]);
+    }
+  };
+
+  // Remove single week rule
+  const handleRemoveWeekRule = (index: number) => {
+    if (setWeekLockedRules && setWeekLockedRulesDisplay) {
+      setWeekLockedRules(safeWeekLockedRules.filter((_, i) => i !== index));
+      setWeekLockedRulesDisplay(safeWeekLockedRulesDisplay.filter((_, i) => i !== index));
+    }
+  };
+
+  // Remove single permanent rule
+  const handleRemovePermanentRule = (index: number) => {
+    if (setPermanentRules && setPermanentRulesDisplay) {
+      setPermanentRules(safePermanentRules.filter((_, i) => i !== index));
+      setPermanentRulesDisplay(safePermanentRulesDisplay.filter((_, i) => i !== index));
+    }
+  };
 
   return (
     <div className="space-y-6">
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-800 via-slate-700 to-slate-600 bg-clip-text text-transparent">Schedule</h1>
-          <p className="text-sm text-slate-500 mt-1">Manage your weekly staff schedule</p>
+          <h1 className="text-3xl font-bold text-white">Schedule</h1>
+          <p className="text-sm text-[#6b6b75] mt-1">Manage your weekly staff schedule</p>
         </div>
         <div className="flex items-center gap-3">
           {schedule && (
             <button
               onClick={() => setShowClearConfirm(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 text-sm font-semibold rounded-xl transition-all duration-200 border border-red-200 hover:border-red-300 hover:shadow-md hover:shadow-red-100"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#ef4444]/10 hover:bg-[#ef4444]/20 text-[#ef4444] text-sm font-semibold rounded-xl transition-all duration-200 border border-[#ef4444]/30 hover:border-[#ef4444]/50"
             >
               <TrashIcon className="w-4 h-4" />
               Clear Schedule
             </button>
           )}
 
+          {schedule && (
+            <button
+              onClick={handlePrintSchedule}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#1a1a1f] hover:bg-[#222228] text-white text-sm font-semibold rounded-xl transition-all duration-200 border border-[#2a2a32] hover:border-[#3a3a45]"
+            >
+              <PrintIcon className="w-4 h-4" />
+              Print
+            </button>
+          )}
+
           {/* Clear Confirmation Modal */}
           {showClearConfirm && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-              <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4 transform transition-all scale-100">
-                <div className="flex items-center gap-3 mb-4 text-red-600">
-                  <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+              <div className="bg-[#1a1a1f] rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4 transform transition-all scale-100 border border-[#2a2a32]">
+                <div className="flex items-center gap-3 mb-4 text-[#ef4444]">
+                  <div className="w-10 h-10 rounded-full bg-[#ef4444]/10 flex items-center justify-center">
                     <TrashIcon className="w-5 h-5" />
                   </div>
-                  <h3 className="text-lg font-bold text-slate-800">Clear Schedule?</h3>
+                  <h3 className="text-lg font-bold text-white">Clear Schedule?</h3>
                 </div>
-                <p className="text-slate-600 mb-6">
+                <p className="text-[#a0a0a8] mb-6">
                   Are you sure you want to clear the entire schedule? This action cannot be undone.
                 </p>
                 <div className="flex gap-3 justify-end">
                   <button
                     onClick={() => setShowClearConfirm(false)}
-                    className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition-colors"
+                    className="px-4 py-2 text-[#a0a0a8] font-medium hover:bg-[#222228] rounded-lg transition-colors"
                   >
                     Cancel
                   </button>
@@ -113,7 +457,7 @@ export default function ScheduleView({
                       onClearSchedule();
                       setShowClearConfirm(false);
                     }}
-                    className="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 shadow-lg shadow-red-500/30 transition-all"
+                    className="px-4 py-2 bg-[#ef4444] text-white font-medium rounded-lg hover:bg-[#dc2626] shadow-lg shadow-[#ef4444]/20 transition-all"
                   >
                     Yes, Clear It
                   </button>
@@ -124,7 +468,7 @@ export default function ScheduleView({
           <button
             onClick={handleGenerate}
             disabled={isGenerating}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 hover:from-amber-600 hover:via-orange-600 hover:to-red-600 disabled:from-slate-400 disabled:via-slate-400 disabled:to-slate-400 text-white text-sm font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:scale-[1.02] active:scale-[0.98]"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#e5a825] hover:bg-[#f0b429] disabled:bg-[#3a3a45] text-[#0d0d0f] disabled:text-[#6b6b75] text-sm font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-[#e5a825]/20 hover:shadow-[#e5a825]/40 hover:scale-[1.02] active:scale-[0.98]"
           >
             {isGenerating ? (
               <>
@@ -159,7 +503,7 @@ export default function ScheduleView({
         />
         <StatCard
           label="Coverage"
-          value={schedule ? `${stats.coverage}%` : '—'}
+          value={schedule ? `${stats.coverage}%` : '-'}
           icon={<CheckIcon className="w-5 h-5" />}
           trend={stats.conflicts > 0 ? `${stats.conflicts} gaps` : schedule ? 'Full coverage' : undefined}
           color={stats.conflicts > 0 ? 'red' : 'emerald'}
@@ -174,43 +518,135 @@ export default function ScheduleView({
       </div>
 
       {/* Week Notes - Quick input for this week's scheduling instructions */}
-      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm p-5 hover:shadow-md transition-shadow duration-200">
+      <div className="bg-[#1a1a1f] rounded-2xl border border-[#2a2a32] p-5 hover:border-[#3a3a45] transition-colors duration-200">
         <div className="flex items-start gap-4">
+          {/* Left: Input */}
           <div className="flex-1">
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
-              Week Notes <span className="text-slate-400 font-normal">({formatWeekRange(weekStart).split(',')[0]})</span>
+            <label className="block text-sm font-semibold text-[#a0a0a8] mb-2">
+              Week Notes <span className="text-[#6b6b75] font-normal">({formatWeekRange(weekStart).split(',')[0]})</span>
             </label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g., Kim opens Saturday, Kris Ann off Tuesday, Ali works Friday night..."
-              className="w-full h-16 p-3 bg-slate-50/80 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-400 focus:bg-white resize-none transition-all duration-200 placeholder:text-slate-400"
+              placeholder="e.g., December 24 closing at 2pm, December 25 CLOSED, [Name] opens Saturday, [Name] off Tuesday..."
+              className="w-full h-20 p-3 bg-[#141417] border border-[#2a2a32] rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825] resize-none transition-all duration-200 placeholder:text-[#6b6b75]"
             />
-          </div>
-          {parsedPreview.length > 0 && (
-            <div className="flex-shrink-0 pt-7">
-              <div className="flex flex-wrap gap-1.5">
+            {/* Preview */}
+            {parsedPreview.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {parsedPreview.map((text, idx) => (
                   <span
                     key={idx}
-                    className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold shadow-sm ${text.startsWith('✓')
-                      ? 'bg-gradient-to-r from-emerald-50 to-green-50 text-emerald-700 border border-emerald-200'
-                      : text.startsWith('✗')
-                        ? 'bg-gradient-to-r from-red-50 to-rose-50 text-red-700 border border-red-200'
-                        : 'bg-gradient-to-r from-amber-50 to-orange-50 text-amber-700 border border-amber-200'
-                      }`}
+                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                      text.includes('CLOSED') ? 'bg-[#ef4444]/10 text-[#ef4444] border border-[#ef4444]/30' :
+                      text.includes('Close at') ? 'bg-[#f59e0b]/10 text-[#f59e0b] border border-[#f59e0b]/30' :
+                      text.startsWith('✗') ? 'bg-[#ef4444]/10 text-[#ef4444] border border-[#ef4444]/30' :
+                      'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
+                    }`}
                   >
                     {text}
                   </span>
                 ))}
               </div>
+            )}
+          </div>
+
+          {/* Middle: Apply Buttons */}
+          <div className="flex flex-col items-center justify-center gap-2 pt-6">
+            {/* This Week Button */}
+            <div className="flex flex-col items-center">
+              <button
+                onClick={handleApplyWeekRules}
+                disabled={parsedPreview.length === 0}
+                className={`p-2.5 rounded-full transition-all duration-200 ${
+                  parsedPreview.length > 0
+                    ? 'bg-[#e5a825] text-[#0d0d0f] hover:bg-[#f5b835] shadow-lg shadow-[#e5a825]/30 hover:scale-110'
+                    : 'bg-[#2a2a32] text-[#6b6b75] cursor-not-allowed'
+                }`}
+                title="Apply to this week only"
+              >
+                <ArrowRightIcon className="w-4 h-4" />
+              </button>
+              <span className="text-[10px] text-[#6b6b75] mt-0.5">This Week</span>
             </div>
-          )}
+            {/* Save Permanently Button */}
+            <div className="flex flex-col items-center">
+              <button
+                onClick={handleApplyPermanentRules}
+                disabled={parsedPreview.length === 0}
+                className={`p-2.5 rounded-full transition-all duration-200 ${
+                  parsedPreview.length > 0
+                    ? 'bg-[#a855f7] text-white hover:bg-[#b975f9] shadow-lg shadow-[#a855f7]/30 hover:scale-110'
+                    : 'bg-[#2a2a32] text-[#6b6b75] cursor-not-allowed'
+                }`}
+                title="Save permanently (all weeks, persists after refresh)"
+              >
+                <LockClosedIcon className="w-4 h-4" />
+              </button>
+              <span className="text-[10px] text-[#6b6b75] mt-0.5">Always</span>
+            </div>
+          </div>
+
+          {/* Right: Active Rules (Two Sections) */}
+          <div className="w-72 space-y-2">
+            {/* This Week Rules */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] font-medium text-[#e5a825] flex items-center gap-1">
+                  <CalendarIcon className="w-3 h-3" />
+                  This Week {safeWeekLockedRulesDisplay.length > 0 && `(${safeWeekLockedRulesDisplay.length})`}
+                </label>
+                {safeWeekLockedRulesDisplay.length > 0 && (
+                  <button onClick={handleClearWeekRules} className="text-[10px] text-[#ef4444] hover:text-[#f87171]">Clear</button>
+                )}
+              </div>
+              <div className="h-16 bg-[#141417] border border-[#e5a825]/30 rounded-lg p-1.5 overflow-y-auto">
+                {safeWeekLockedRulesDisplay.length > 0 ? (
+                  <div className="space-y-1">
+                    {safeWeekLockedRulesDisplay.map((text, idx) => (
+                      <div key={idx} className="px-1.5 py-0.5 rounded text-[10px] font-medium flex items-center justify-between gap-1 bg-[#e5a825]/10 text-[#e5a825] border border-[#e5a825]/30">
+                        <span className="truncate">{text}</span>
+                        <button onClick={() => handleRemoveWeekRule(idx)} className="hover:text-[#ef4444] flex-shrink-0"><XIcon className="w-2.5 h-2.5" /></button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-[10px] text-[#6b6b75]">Only this week</div>
+                )}
+              </div>
+            </div>
+            {/* Permanent Rules */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] font-medium text-[#a855f7] flex items-center gap-1">
+                  <LockClosedIcon className="w-3 h-3" />
+                  Always {safePermanentRulesDisplay.length > 0 && `(${safePermanentRulesDisplay.length})`}
+                </label>
+                {safePermanentRulesDisplay.length > 0 && (
+                  <button onClick={handleClearPermanentRules} className="text-[10px] text-[#ef4444] hover:text-[#f87171]">Clear</button>
+                )}
+              </div>
+              <div className="h-16 bg-[#141417] border border-[#a855f7]/30 rounded-lg p-1.5 overflow-y-auto">
+                {safePermanentRulesDisplay.length > 0 ? (
+                  <div className="space-y-1">
+                    {safePermanentRulesDisplay.map((text, idx) => (
+                      <div key={idx} className="px-1.5 py-0.5 rounded text-[10px] font-medium flex items-center justify-between gap-1 bg-[#a855f7]/10 text-[#a855f7] border border-[#a855f7]/30">
+                        <span className="truncate">{text}</span>
+                        <button onClick={() => handleRemovePermanentRule(idx)} className="hover:text-[#ef4444] flex-shrink-0"><XIcon className="w-2.5 h-2.5" /></button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-[10px] text-[#6b6b75]">Saved rules (persist after refresh)</div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Main Content Area */}
-      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200">
+      <div className="bg-[#1a1a1f] rounded-2xl border border-[#2a2a32] overflow-hidden hover:border-[#3a3a45] transition-colors duration-200">
         {/* Schedule Content */}
         <div className="p-6">
           {schedule ? (
@@ -306,34 +742,34 @@ export default function ScheduleView({
 
       {/* Conflicts & Warnings */}
       {schedule && (schedule.conflicts.length > 0 || schedule.warnings.length > 0) && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-          <h3 className="text-sm font-medium text-gray-900 mb-4">Issues & Warnings</h3>
+        <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-6">
+          <h3 className="text-sm font-medium text-white mb-4">Issues & Warnings</h3>
           <div className="space-y-3">
             {schedule.conflicts.map((conflict, idx) => (
-              <div key={idx} className="flex items-start gap-3 p-3 bg-red-50 rounded-lg">
-                <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <AlertIcon className="w-4 h-4 text-red-600" />
+              <div key={idx} className="flex items-start gap-3 p-3 bg-[#ef4444]/10 rounded-lg border border-[#ef4444]/20">
+                <div className="w-8 h-8 bg-[#ef4444]/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <AlertIcon className="w-4 h-4 text-[#ef4444]" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-red-800">
+                  <p className="text-sm font-medium text-[#ef4444]">
                     {conflict.type === 'rule_violation' ? 'Rule Violation' :
                       conflict.type === 'no_bartender' ? 'Missing Bartender' :
                         'Coverage Gap'}
                   </p>
-                  <p className="text-sm text-red-600">{conflict.message}</p>
+                  <p className="text-sm text-[#ef4444]/80">{conflict.message}</p>
                 </div>
               </div>
             ))}
             {schedule.warnings.map((warning, idx) => (
-              <div key={idx} className="flex items-start gap-3 p-3 bg-amber-50 rounded-lg">
-                <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <WarningIcon className="w-4 h-4 text-amber-600" />
+              <div key={idx} className="flex items-start gap-3 p-3 bg-[#e5a825]/10 rounded-lg border border-[#e5a825]/20">
+                <div className="w-8 h-8 bg-[#e5a825]/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <WarningIcon className="w-4 h-4 text-[#e5a825]" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-amber-800">
+                  <p className="text-sm font-medium text-[#e5a825]">
                     {warning.type === 'overtime' ? 'Overtime Alert' : 'Scheduling Note'}
                   </p>
-                  <p className="text-sm text-amber-600">{warning.message}</p>
+                  <p className="text-sm text-[#e5a825]/80">{warning.message}</p>
                 </div>
               </div>
             ))}
@@ -361,41 +797,41 @@ function StatCard({
   weekNav?: { onPrev: () => void; onNext: () => void };
 }) {
   const colorClasses: Record<string, { bg: string; icon: string; shadow: string }> = {
-    blue: { bg: 'bg-gradient-to-br from-blue-500 to-indigo-600', icon: 'text-white', shadow: 'shadow-blue-500/30' },
-    green: { bg: 'bg-gradient-to-br from-emerald-500 to-teal-600', icon: 'text-white', shadow: 'shadow-emerald-500/30' },
-    emerald: { bg: 'bg-gradient-to-br from-emerald-500 to-green-600', icon: 'text-white', shadow: 'shadow-emerald-500/30' },
-    red: { bg: 'bg-gradient-to-br from-red-500 to-rose-600', icon: 'text-white', shadow: 'shadow-red-500/30' },
-    purple: { bg: 'bg-gradient-to-br from-violet-500 to-purple-600', icon: 'text-white', shadow: 'shadow-violet-500/30' },
+    blue: { bg: 'bg-[#3b82f6]', icon: 'text-white', shadow: 'shadow-[#3b82f6]/30' },
+    green: { bg: 'bg-[#22c55e]', icon: 'text-white', shadow: 'shadow-[#22c55e]/30' },
+    emerald: { bg: 'bg-[#22c55e]', icon: 'text-white', shadow: 'shadow-[#22c55e]/30' },
+    red: { bg: 'bg-[#ef4444]', icon: 'text-white', shadow: 'shadow-[#ef4444]/30' },
+    purple: { bg: 'bg-[#a855f7]', icon: 'text-white', shadow: 'shadow-[#a855f7]/30' },
   };
 
   const colorStyle = colorClasses[color] || colorClasses.blue;
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/60 p-5 shadow-sm hover:shadow-md transition-all duration-200 group">
+    <div className="bg-[#1a1a1f] rounded-2xl border border-[#2a2a32] p-5 hover:border-[#3a3a45] transition-all duration-200 group">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-medium text-slate-500">{label}</span>
+        <span className="text-sm font-medium text-[#6b6b75]">{label}</span>
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${colorStyle.bg} shadow-lg ${colorStyle.shadow} group-hover:scale-110 transition-transform duration-200`}>
           {icon}
         </div>
       </div>
       <div className="flex items-end justify-between">
         <div>
-          <p className="text-2xl font-bold text-slate-800">{value}</p>
-          {trend && <p className="text-xs text-slate-500 mt-1">{trend}</p>}
+          <p className="text-2xl font-bold text-white">{value}</p>
+          {trend && <p className="text-xs text-[#6b6b75] mt-1">{trend}</p>}
         </div>
         {weekNav && (
           <div className="flex gap-1">
             <button
               onClick={weekNav.onPrev}
-              className="p-1.5 hover:bg-slate-100 rounded-lg transition-all duration-200 hover:scale-110"
+              className="p-1.5 hover:bg-[#222228] rounded-lg transition-all duration-200 hover:scale-110"
             >
-              <ChevronLeftIcon className="w-4 h-4 text-slate-400" />
+              <ChevronLeftIcon className="w-4 h-4 text-[#6b6b75]" />
             </button>
             <button
               onClick={weekNav.onNext}
-              className="p-1.5 hover:bg-slate-100 rounded-lg transition-all duration-200 hover:scale-110"
+              className="p-1.5 hover:bg-[#222228] rounded-lg transition-all duration-200 hover:scale-110"
             >
-              <ChevronRightIcon className="w-4 h-4 text-slate-400" />
+              <ChevronRightIcon className="w-4 h-4 text-[#6b6b75]" />
             </button>
           </div>
         )}
@@ -406,7 +842,11 @@ function StatCard({
 
 // Helper to format time (24h to 12h)
 function formatTime(time24: string): string {
-  const [hours, minutes] = time24.split(':').map(Number);
+  if (!time24 || !time24.includes(':')) return time24 || '';
+  const parts = time24.split(':');
+  const hours = parseInt(parts[0], 10);
+  const minutes = parseInt(parts[1], 10) || 0;
+  if (isNaN(hours)) return time24;
   const period = hours >= 12 ? 'p' : 'a';
   let hour12 = hours % 12;
   if (hour12 === 0) hour12 = 12;
@@ -646,19 +1086,19 @@ function ScheduleGrid({
       <table className="w-full border-collapse">
         <thead>
           <tr>
-            <th className="p-2 border-b-2 border-slate-200 bg-slate-50 text-left min-w-[150px]">Employee</th>
+            <th className="p-2 border-b-2 border-[#2a2a32] bg-[#141417] text-left min-w-[150px] text-[#a0a0a8] text-sm font-medium">Employee</th>
             {days.map((day, idx) => (
-              <th key={day} className="p-2 border-b-2 border-slate-200 bg-slate-50 min-w-[120px]">
-                <div className="text-xs font-medium text-gray-500 uppercase">{day}</div>
-                <div className="text-lg font-semibold text-gray-900">{getDateForDay(idx)}</div>
+              <th key={day} className="p-2 border-b-2 border-[#2a2a32] bg-[#141417] min-w-[120px]">
+                <div className="text-xs font-medium text-[#6b6b75] uppercase">{day}</div>
+                <div className="text-lg font-semibold text-white">{getDateForDay(idx)}</div>
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
           {employees.map(emp => (
-            <tr key={emp.id} className="border-b border-slate-100 hover:bg-slate-50/50">
-              <td className="p-3 font-medium text-slate-700 bg-white sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+            <tr key={emp.id} className="border-b border-[#2a2a32] hover:bg-[#222228]/50">
+              <td className="p-3 font-medium text-white bg-[#141417] sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.3)]">
                 {emp.name}
               </td>
               {days.map(day => {
@@ -670,7 +1110,7 @@ function ScheduleGrid({
                 return (
                   <td
                     key={day}
-                    className={`p-2 border-l border-slate-100 text-center relative group transition-all ${isDropping ? 'bg-blue-50 ring-2 ring-blue-400 ring-inset' : ''
+                    className={`p-2 border-l border-[#2a2a32] text-center relative group transition-all ${isDropping ? 'bg-[#3b82f6]/10 ring-2 ring-[#3b82f6] ring-inset' : ''
                       }`}
                     onDragOver={(e) => handleDragOver(e, emp.id, dayFull)}
                     onDragLeave={handleDragLeave}
@@ -689,11 +1129,11 @@ function ScheduleGrid({
                               draggable={!locked}
                               onDragStart={(e) => handleDragStart(e, emp.id, dayFull, shiftType, i)}
                               onDragEnd={handleDragEnd}
-                              className={`relative text-sm py-1 px-2 rounded-md font-medium cursor-grab active:cursor-grabbing transition-all ${locked ? 'ring-2 ring-amber-400' : ''
+                              className={`relative text-sm py-1 px-2 rounded-md font-medium cursor-grab active:cursor-grabbing transition-all ${locked ? 'ring-2 ring-[#e5a825]' : ''
                                 } ${isDragging ? 'opacity-50 scale-95' : ''
-                                } ${shiftType === 'night' ? 'bg-indigo-100 text-indigo-700' :
-                                  a.shiftId.includes('mid') ? 'bg-purple-100 text-purple-700' :
-                                    'bg-amber-100 text-amber-700'
+                                } ${shiftType === 'night' ? 'bg-[#a855f7]/20 text-[#a855f7] border border-[#a855f7]/30' :
+                                  a.shiftId.includes('mid') ? 'bg-[#3b82f6]/20 text-[#3b82f6] border border-[#3b82f6]/30' :
+                                    'bg-[#e5a825]/20 text-[#e5a825] border border-[#e5a825]/30'
                                 }`}
                             >
                               {a.startTime && a.endTime ? (
@@ -709,12 +1149,12 @@ function ScheduleGrid({
                                   onToggleLock(emp.id, dayFull, shiftType);
                                 }}
                                 className={`absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-xs transition-all ${locked
-                                  ? 'bg-amber-500 text-white shadow-md'
-                                  : 'bg-slate-200 text-slate-500 opacity-0 group-hover:opacity-100 hover:bg-slate-300'
+                                  ? 'bg-[#e5a825] text-[#0d0d0f] shadow-md'
+                                  : 'bg-[#2a2a32] text-[#6b6b75] opacity-0 group-hover:opacity-100 hover:bg-[#3a3a45]'
                                   }`}
                                 title={locked ? 'Unlock shift' : 'Lock shift'}
                               >
-                                {locked ? '🔒' : '🔓'}
+                                {locked ? 'L' : 'U'}
                               </button>
                             </div>
                           );
@@ -722,7 +1162,7 @@ function ScheduleGrid({
                       </div>
                     ) : (
                       <div
-                        className={`h-8 flex items-center justify-center text-slate-300 text-sm rounded-md transition-all ${isDropping ? 'bg-blue-100 text-blue-500 border-2 border-dashed border-blue-300' : ''
+                        className={`h-8 flex items-center justify-center text-[#6b6b75] text-sm rounded-md transition-all ${isDropping ? 'bg-[#3b82f6]/10 text-[#3b82f6] border-2 border-dashed border-[#3b82f6]/50' : ''
                           }`}
                       >
                         {isClosed ? 'CLOSED' : isDropping ? 'Drop here' : 'OFF'}
@@ -743,16 +1183,16 @@ function ScheduleGrid({
 function EmptyState({ onGenerate }: { onGenerate: () => void }) {
   return (
     <div className="text-center py-16">
-      <div className="w-20 h-20 bg-gradient-to-br from-amber-100 via-orange-100 to-red-100 rounded-3xl flex items-center justify-center mx-auto mb-5 shadow-lg shadow-orange-200/50">
-        <CalendarIcon className="w-10 h-10 text-amber-600" />
+      <div className="w-20 h-20 bg-[#222228] rounded-3xl flex items-center justify-center mx-auto mb-5 shadow-lg border border-[#2a2a32]">
+        <CalendarIcon className="w-10 h-10 text-[#e5a825]" />
       </div>
-      <h3 className="text-xl font-bold text-slate-800 mb-2">No schedule generated</h3>
-      <p className="text-sm text-slate-500 mb-6 max-w-sm mx-auto">
+      <h3 className="text-xl font-bold text-white mb-2">No schedule generated</h3>
+      <p className="text-sm text-[#6b6b75] mb-6 max-w-sm mx-auto">
         Generate a schedule to automatically assign staff based on their availability and preferences.
       </p>
       <button
         onClick={onGenerate}
-        className="inline-flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 hover:from-amber-600 hover:via-orange-600 hover:to-red-600 text-white text-sm font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:scale-[1.02]"
+        className="inline-flex items-center gap-2 px-5 py-3 bg-[#e5a825] hover:bg-[#f0b429] text-[#0d0d0f] text-sm font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-[#e5a825]/20 hover:shadow-[#e5a825]/40 hover:scale-[1.02]"
       >
         <SparklesIcon className="w-4 h-4" />
         Generate Schedule
@@ -774,7 +1214,7 @@ function NotesPanel({
   return (
     <div className="grid grid-cols-2 gap-6">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-[#a0a0a8] mb-2">
           Scheduling Instructions
         </label>
         <textarea
@@ -783,32 +1223,32 @@ function NotesPanel({
           placeholder="Type natural language instructions...
 
 Examples:
-• Kim opens Saturday
-• Kris Ann off Tuesday
-• Ali works Friday night
-• Heidi Wed thru Fri morning"
-          className="w-full h-64 p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+- Kim opens Saturday
+- Kris Ann off Tuesday
+- Ali works Friday night
+- Heidi Wed thru Fri morning"
+          className="w-full h-64 p-4 bg-[#141417] border border-[#2a2a32] rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825] focus:border-transparent resize-none placeholder:text-[#6b6b75]"
         />
-        <p className="text-xs text-gray-500 mt-2">
-          Keywords: &quot;opens&quot;, &quot;off&quot;, &quot;night&quot;, &quot;morning&quot;, &quot;prefers&quot;, &quot;closing&quot;, &quot;works&quot; • Nicknames work too (Chris = Kris Ann, Hales = Haley, etc.)
+        <p className="text-xs text-[#6b6b75] mt-2">
+          Keywords: &quot;opens&quot;, &quot;off&quot;, &quot;night&quot;, &quot;morning&quot;, &quot;prefers&quot;, &quot;closing&quot;, &quot;works&quot; - Nicknames work too (Chris = Kris Ann, Hales = Haley, etc.)
         </p>
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-[#a0a0a8] mb-2">
           Parsed Rules {parsedPreview.length > 0 && `(${parsedPreview.length})`}
         </label>
-        <div className="h-64 bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-y-auto">
+        <div className="h-64 bg-[#141417] border border-[#2a2a32] rounded-lg p-4 overflow-y-auto">
           {parsedPreview.length > 0 ? (
             <div className="space-y-2">
               {parsedPreview.map((text, idx) => (
                 <div
                   key={idx}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium ${text.startsWith('✓')
-                    ? 'bg-green-50 text-green-700 border border-green-200'
-                    : text.startsWith('✗')
-                      ? 'bg-red-50 text-red-700 border border-red-200'
-                      : 'bg-blue-50 text-blue-700 border border-blue-200'
+                  className={`px-3 py-2 rounded-lg text-sm font-medium ${text.startsWith('Y')
+                    ? 'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
+                    : text.startsWith('X')
+                      ? 'bg-[#ef4444]/10 text-[#ef4444] border border-[#ef4444]/30'
+                      : 'bg-[#3b82f6]/10 text-[#3b82f6] border border-[#3b82f6]/30'
                     }`}
                 >
                   {text}
@@ -816,13 +1256,13 @@ Examples:
               ))}
             </div>
           ) : (
-            <div className="h-full flex items-center justify-center text-sm text-gray-400">
+            <div className="h-full flex items-center justify-center text-sm text-[#6b6b75]">
               Rules will appear here as you type
             </div>
           )}
         </div>
         {parsedPreview.length > 0 && (
-          <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
+          <p className="text-xs text-[#22c55e] mt-2 flex items-center gap-1">
             <CheckIcon className="w-3 h-3" />
             Click &quot;Regenerate&quot; to apply these rules
           </p>
@@ -855,8 +1295,8 @@ function StaffingNeedsEditor({
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Weekly Staffing Slots</h3>
-        <p className="text-sm text-gray-500 mb-4">
+        <h3 className="text-lg font-medium text-white mb-2">Weekly Staffing Slots</h3>
+        <p className="text-sm text-[#6b6b75] mb-4">
           View time slots for each day. Use the <span className="font-medium">Staffing</span> tab to edit slots and add notes.
         </p>
       </div>
@@ -867,13 +1307,13 @@ function StaffingNeedsEditor({
           const slots = staffingNeeds[key]?.slots || [];
           const notes = staffingNeeds[key]?.notes;
           return (
-            <div key={key} className="bg-slate-50 rounded-lg p-3 text-center border border-slate-200">
-              <div className="text-xs font-medium text-slate-500 mb-1">{label}</div>
-              <div className="text-xl font-bold text-slate-800">{slots.length}</div>
-              <div className="text-xs text-slate-400">slot{slots.length !== 1 ? 's' : ''}</div>
+            <div key={key} className="bg-[#141417] rounded-lg p-3 text-center border border-[#2a2a32]">
+              <div className="text-xs font-medium text-[#6b6b75] mb-1">{label}</div>
+              <div className="text-xl font-bold text-white">{slots.length}</div>
+              <div className="text-xs text-[#6b6b75]">slot{slots.length !== 1 ? 's' : ''}</div>
               {notes && (
-                <div className="mt-1 text-xs text-amber-600" title={notes}>
-                  📝
+                <div className="mt-1 text-xs text-[#e5a825]" title={notes}>
+                  Note
                 </div>
               )}
             </div>
@@ -882,14 +1322,14 @@ function StaffingNeedsEditor({
       </div>
 
       {/* Summary */}
-      <div className="p-4 bg-gray-50 rounded-lg">
+      <div className="p-4 bg-[#141417] rounded-lg border border-[#2a2a32]">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-700">Total Slots</span>
-          <span className="text-sm text-gray-900 font-semibold">{getTotalSlots()} time slots</span>
+          <span className="text-sm font-medium text-[#a0a0a8]">Total Slots</span>
+          <span className="text-sm text-white font-semibold">{getTotalSlots()} time slots</span>
         </div>
       </div>
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-[#6b6b75]">
         Go to the Staffing tab to configure individual time slots and add scheduling notes.
       </p>
     </div>
@@ -1018,6 +1458,30 @@ function GripIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+    </svg>
+  );
+}
+
+function PrintIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" />
+    </svg>
+  );
+}
+
+function ArrowRightIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+    </svg>
+  );
+}
+
+function XIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
     </svg>
   );
 }

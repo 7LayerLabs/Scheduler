@@ -1,14 +1,14 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { generateSchedule } from '@/lib/scheduler';
 import { employees as initialEmployees } from '@/lib/employees';
 import { Employee, WeeklySchedule, ScheduleOverride, LockedShift, WeeklyStaffingNeeds } from '@/lib/types';
 import Sidebar from '@/components/Sidebar';
 import ScheduleView from '@/components/ScheduleView';
 import TeamView from '@/components/TeamView';
-import StaffingView from '@/components/StaffingView';
-import NotesView from '@/components/NotesView';
+import NotesAndStaffingView from '@/components/NotesAndStaffingView';
+import SettingsView, { AppSettings, DEFAULT_SETTINGS } from '@/components/SettingsView';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('schedule');
@@ -39,8 +39,68 @@ export default function Home() {
   const setOverrides = (newOverrides: ScheduleOverride[]) => {
     setWeeklyOverrides(prev => ({ ...prev, [currentWeekKey]: newOverrides }));
   };
+
+  // Permanent rules that apply to ALL weeks - load from localStorage
+  const [permanentRules, setPermanentRulesState] = useState<ScheduleOverride[]>([]);
+  const [permanentRulesDisplay, setPermanentRulesDisplayState] = useState<string[]>([]);
+
+  // Week-specific locked rules (stored per week) - load from localStorage
+  const [weeklyLockedRules, setWeeklyLockedRulesState] = useState<Record<string, ScheduleOverride[]>>({});
+  const [weeklyLockedRulesDisplay, setWeeklyLockedRulesDisplayState] = useState<Record<string, string[]>>({});
+
+  // Load rules from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedPermanentRules = localStorage.getItem('bobolas-permanent-rules');
+      const savedPermanentDisplay = localStorage.getItem('bobolas-permanent-display');
+      const savedWeeklyRules = localStorage.getItem('bobolas-weekly-rules');
+      const savedWeeklyDisplay = localStorage.getItem('bobolas-weekly-display');
+
+      if (savedPermanentRules) setPermanentRulesState(JSON.parse(savedPermanentRules));
+      if (savedPermanentDisplay) setPermanentRulesDisplayState(JSON.parse(savedPermanentDisplay));
+      if (savedWeeklyRules) setWeeklyLockedRulesState(JSON.parse(savedWeeklyRules));
+      if (savedWeeklyDisplay) setWeeklyLockedRulesDisplayState(JSON.parse(savedWeeklyDisplay));
+    } catch (e) {
+      console.error('Error loading rules from localStorage:', e);
+    }
+  }, []);
+
+  // Save permanent rules to localStorage
+  const setPermanentRules = (rules: ScheduleOverride[]) => {
+    setPermanentRulesState(rules);
+    localStorage.setItem('bobolas-permanent-rules', JSON.stringify(rules));
+  };
+  const setPermanentRulesDisplay = (display: string[]) => {
+    setPermanentRulesDisplayState(display);
+    localStorage.setItem('bobolas-permanent-display', JSON.stringify(display));
+  };
+
+  // Save weekly rules to localStorage
+  const setWeeklyLockedRules = (newWeeklyRules: Record<string, ScheduleOverride[]>) => {
+    setWeeklyLockedRulesState(newWeeklyRules);
+    localStorage.setItem('bobolas-weekly-rules', JSON.stringify(newWeeklyRules));
+  };
+  const setWeeklyLockedRulesDisplay = (newWeeklyDisplay: Record<string, string[]>) => {
+    setWeeklyLockedRulesDisplayState(newWeeklyDisplay);
+    localStorage.setItem('bobolas-weekly-display', JSON.stringify(newWeeklyDisplay));
+  };
+
+  // Get locked rules for current week
+  const weekLockedRules = weeklyLockedRules[currentWeekKey] || [];
+  const weekLockedRulesDisplay = weeklyLockedRulesDisplay[currentWeekKey] || [];
+
+  const setWeekLockedRules = (rules: ScheduleOverride[]) => {
+    const newWeeklyRules = { ...weeklyLockedRules, [currentWeekKey]: rules };
+    setWeeklyLockedRules(newWeeklyRules);
+  };
+  const setWeekLockedRulesDisplay = (display: string[]) => {
+    const newWeeklyDisplay = { ...weeklyLockedRulesDisplay, [currentWeekKey]: display };
+    setWeeklyLockedRulesDisplay(newWeeklyDisplay);
+  };
+
   const [lockedShifts, setLockedShifts] = useState<LockedShift[]>([]);
   const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
+  const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const DEFAULT_STAFFING_NEEDS: WeeklyStaffingNeeds = {
     tuesday: {
       slots: [
@@ -94,13 +154,44 @@ export default function Home() {
     },
   };
 
-  const [weeklyStaffingNeeds, setWeeklyStaffingNeeds] = useState<Record<string, WeeklyStaffingNeeds>>({});
+  const [weeklyStaffingNeeds, setWeeklyStaffingNeedsState] = useState<Record<string, WeeklyStaffingNeeds>>({});
 
-  // Get staffing needs for current week or use default
-  const staffingNeeds = weeklyStaffingNeeds[currentWeekKey] || DEFAULT_STAFFING_NEEDS;
+  // Default staffing template - this is saved separately and used as template for new weeks
+  const [defaultStaffingTemplate, setDefaultStaffingTemplateState] = useState<WeeklyStaffingNeeds>(DEFAULT_STAFFING_NEEDS);
+
+  // Load staffing needs and default template from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedStaffingNeeds = localStorage.getItem('bobolas-staffing-needs');
+      const savedDefaultTemplate = localStorage.getItem('bobolas-default-staffing-template');
+
+      if (savedStaffingNeeds) {
+        setWeeklyStaffingNeedsState(JSON.parse(savedStaffingNeeds));
+      }
+      if (savedDefaultTemplate) {
+        setDefaultStaffingTemplateState(JSON.parse(savedDefaultTemplate));
+      } else {
+        // Save the initial default template
+        localStorage.setItem('bobolas-default-staffing-template', JSON.stringify(DEFAULT_STAFFING_NEEDS));
+      }
+    } catch (e) {
+      console.error('Error loading staffing needs from localStorage:', e);
+    }
+  }, []);
+
+  // Get staffing needs for current week or use default template
+  const staffingNeeds = weeklyStaffingNeeds[currentWeekKey] || defaultStaffingTemplate;
 
   const setStaffingNeeds = (newNeeds: WeeklyStaffingNeeds) => {
-    setWeeklyStaffingNeeds(prev => ({ ...prev, [currentWeekKey]: newNeeds }));
+    const updatedNeeds = { ...weeklyStaffingNeeds, [currentWeekKey]: newNeeds };
+    setWeeklyStaffingNeedsState(updatedNeeds);
+    localStorage.setItem('bobolas-staffing-needs', JSON.stringify(updatedNeeds));
+  };
+
+  // Save current week's staffing as the new default template
+  const saveAsDefaultTemplate = () => {
+    setDefaultStaffingTemplateState(staffingNeeds);
+    localStorage.setItem('bobolas-default-staffing-template', JSON.stringify(staffingNeeds));
   };
 
   const handleUpdateEmployee = (updatedEmployee: Employee) => {
@@ -131,7 +222,20 @@ export default function Home() {
         shiftType: lock.shiftType,
         note: 'Locked shift',
       }));
-      const allOverrides = [...overrides, ...lockedOverrides];
+
+      // Combine ALL rule sources:
+      // 1. permanentRules - apply to ALL weeks (from Notes & Staffing)
+      // 2. weekLockedRules - apply to THIS WEEK only (from Notes & Staffing)
+      // 3. lockedOverrides - from locked shifts on the schedule grid
+      const allOverrides = [...permanentRules, ...weekLockedRules, ...lockedOverrides];
+
+      console.log('Generating schedule with rules:', {
+        permanentRules: permanentRules.length,
+        weekLockedRules: weekLockedRules.length,
+        lockedOverrides: lockedOverrides.length,
+        totalOverrides: allOverrides.length
+      });
+
       // Pass locked shifts and existing assignments so they persist through regeneration
       const existingAssignments = schedule?.assignments || [];
       const newSchedule = generateSchedule(weekStart, allOverrides, employees, staffingNeeds, lockedShifts, existingAssignments);
@@ -180,35 +284,35 @@ export default function Home() {
   };
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-slate-50 via-white to-orange-50/30">
+    <div className="flex min-h-screen bg-[#0d0d0f]">
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
       <main className="flex-1 overflow-auto">
         {/* Top Header */}
-        <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/50 sticky top-0 z-10 shadow-sm">
+        <header className="bg-[#141417] border-b border-[#2a2a32] sticky top-0 z-10">
           <div className="px-8 py-4">
             <div className="flex items-center justify-between">
               {/* Search */}
               <div className="flex-1 max-w-lg">
                 <div className="relative group">
-                  <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-amber-500 transition-colors" />
+                  <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6b6b75] group-focus-within:text-[#e5a825] transition-colors" />
                   <input
                     type="text"
                     placeholder="Search employees, shifts..."
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-100/80 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-400 focus:bg-white transition-all duration-200 placeholder:text-slate-400"
+                    className="w-full pl-10 pr-4 py-2.5 bg-[#1a1a1f] border border-[#2a2a32] rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825] transition-all duration-200 placeholder:text-[#6b6b75]"
                   />
                 </div>
               </div>
 
               {/* Right Actions */}
               <div className="flex items-center gap-4">
-                <button className="relative p-2.5 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-xl transition-all duration-200">
+                <button className="relative p-2.5 text-[#6b6b75] hover:text-[#e5a825] hover:bg-[#1a1a1f] rounded-xl transition-all duration-200">
                   <BellIcon className="w-5 h-5" />
                   {(schedule?.conflicts.length || 0) > 0 && (
-                    <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-gradient-to-r from-red-500 to-rose-500 rounded-full animate-pulse ring-2 ring-white" />
+                    <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-[#ef4444] rounded-full animate-pulse ring-2 ring-[#0d0d0f]" />
                   )}
                 </button>
-                <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-full flex items-center justify-center cursor-pointer shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40 hover:scale-105 transition-all duration-200 ring-2 ring-white">
+                <div className="w-10 h-10 bg-[#a855f7] rounded-full flex items-center justify-center cursor-pointer shadow-lg shadow-[#a855f7]/20 hover:shadow-[#a855f7]/40 hover:scale-105 transition-all duration-200 ring-2 ring-[#a855f7]/20">
                   <span className="text-white font-semibold text-sm">DT</span>
                 </div>
               </div>
@@ -234,29 +338,41 @@ export default function Home() {
               setLockedShifts={setLockedShifts}
               notes={notes}
               setNotes={setNotes}
-              overrides={overrides}
+              overrides={[...permanentRules, ...weekLockedRules]}
               setOverrides={setOverrides}
               staffingNeeds={staffingNeeds}
+              weekLockedRules={weekLockedRules}
+              setWeekLockedRules={setWeekLockedRules}
+              weekLockedRulesDisplay={weekLockedRulesDisplay}
+              setWeekLockedRulesDisplay={setWeekLockedRulesDisplay}
+              permanentRules={permanentRules}
+              setPermanentRules={setPermanentRules}
+              permanentRulesDisplay={permanentRulesDisplay}
+              setPermanentRulesDisplay={setPermanentRulesDisplay}
             />
           )}
 
-          {activeTab === 'staffing' && (
-            <StaffingView
-              weekStart={weekStart}
-              changeWeek={changeWeek}
-              formatWeekRange={formatWeekRange}
-              staffingNeeds={staffingNeeds}
-              setStaffingNeeds={setStaffingNeeds}
-            />
-          )}
-
-          {activeTab === 'notes' && (
-            <NotesView
+          {activeTab === 'notes-staffing' && (
+            <NotesAndStaffingView
               notes={notes}
               setNotes={setNotes}
               overrides={overrides}
               setOverrides={setOverrides}
               employees={employees}
+              weekStart={weekStart}
+              changeWeek={changeWeek}
+              formatWeekRange={formatWeekRange}
+              staffingNeeds={staffingNeeds}
+              setStaffingNeeds={setStaffingNeeds}
+              saveAsDefaultTemplate={saveAsDefaultTemplate}
+              permanentRules={permanentRules}
+              setPermanentRules={setPermanentRules}
+              permanentRulesDisplay={permanentRulesDisplay}
+              setPermanentRulesDisplay={setPermanentRulesDisplay}
+              weekLockedRules={weekLockedRules}
+              setWeekLockedRules={setWeekLockedRules}
+              weekLockedRulesDisplay={weekLockedRulesDisplay}
+              setWeekLockedRulesDisplay={setWeekLockedRulesDisplay}
             />
           )}
 
@@ -270,13 +386,30 @@ export default function Home() {
           )}
 
           {activeTab === 'settings' && (
-            <div className="text-center py-20">
-              <div className="w-20 h-20 bg-gradient-to-br from-violet-100 via-purple-100 to-fuchsia-100 rounded-3xl flex items-center justify-center mx-auto mb-5 shadow-lg shadow-purple-200/50">
-                <SettingsIcon className="w-10 h-10 text-violet-600" />
-              </div>
-              <h2 className="text-2xl font-bold text-slate-800 mb-2">Settings Coming Soon</h2>
-              <p className="text-slate-500">Configure shifts, notifications, and preferences.</p>
-            </div>
+            <SettingsView
+              settings={appSettings}
+              onUpdateSettings={setAppSettings}
+              schedule={schedule}
+              employees={employees}
+              weekStart={weekStart}
+              formatWeekRange={formatWeekRange}
+              onExportSchedule={() => {
+                // Simple CSV export
+                if (!schedule) return;
+                const rows = ['Date,Shift,Employee,Start,End'];
+                for (const a of schedule.assignments) {
+                  const emp = employees.find(e => e.id === a.employeeId);
+                  rows.push(`${a.date},${a.shiftId},${emp?.name || 'Unknown'},${a.startTime || ''},${a.endTime || ''}`);
+                }
+                const csv = rows.join('\n');
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `schedule-${currentWeekKey}.csv`;
+                link.click();
+              }}
+            />
           )}
         </div>
       </main>

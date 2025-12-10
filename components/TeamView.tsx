@@ -165,10 +165,10 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
     return Array.from({ length: 5 }, (_, i) => (
       <span
         key={i}
-        className={`${i < level ? 'text-amber-400' : 'text-gray-200'} ${interactive ? 'cursor-pointer hover:text-amber-300' : ''}`}
+        className={`${i < level ? 'text-[#e5a825]' : 'text-[#3a3a45]'} ${interactive ? 'cursor-pointer hover:text-[#f0b429]' : ''}`}
         onClick={interactive && onChange ? () => onChange(i + 1) : undefined}
       >
-        ★
+        *
       </span>
     ));
   };
@@ -178,14 +178,14 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-800 via-slate-700 to-slate-600 bg-clip-text text-transparent">Team</h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <h1 className="text-3xl font-bold text-white">Team</h1>
+          <p className="text-sm text-[#6b6b75] mt-1">
             {employees.length} team members
           </p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="px-5 py-2.5 bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 hover:from-amber-600 hover:via-orange-600 hover:to-red-600 text-white text-sm font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:scale-[1.02] flex items-center gap-2"
+          className="px-5 py-2.5 bg-[#e5a825] hover:bg-[#f0b429] text-[#0d0d0f] text-sm font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-[#e5a825]/20 hover:shadow-[#e5a825]/40 hover:scale-[1.02] flex items-center gap-2"
         >
           <PlusIcon className="w-5 h-5" />
           Add Employee
@@ -194,17 +194,17 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
 
       <div className="grid grid-cols-3 gap-6">
         {/* Employee List */}
-        <div className="col-span-2 bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200">
+        <div className="col-span-2 bg-[#1a1a1f] rounded-2xl border border-[#2a2a32] overflow-hidden hover:border-[#3a3a45] transition-colors duration-200">
           {/* Search */}
-          <div className="p-4 border-b border-gray-100">
+          <div className="p-4 border-b border-[#2a2a32]">
             <div className="relative">
-              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#6b6b75]" />
               <input
                 type="text"
                 placeholder="Search team members..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-9 pr-4 py-2 bg-[#141417] border border-[#2a2a32] rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825] placeholder:text-[#6b6b75]"
               />
             </div>
           </div>
@@ -212,11 +212,11 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
           {/* Table */}
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gradient-to-r from-slate-50 to-slate-100">
+              <thead className="bg-[#141417]">
                 <tr>
                   <th
                     onClick={() => handleSort('name')}
-                    className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                    className="text-left py-3 px-4 text-xs font-semibold text-[#6b6b75] uppercase tracking-wider cursor-pointer hover:bg-[#1a1a1f] transition-colors select-none"
                   >
                     <div className="flex items-center gap-1">
                       Employee
@@ -225,7 +225,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                   </th>
                   <th
                     onClick={() => handleSort('bartending')}
-                    className="text-center py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                    className="text-center py-3 px-4 text-xs font-semibold text-[#6b6b75] uppercase tracking-wider cursor-pointer hover:bg-[#1a1a1f] transition-colors select-none"
                   >
                     <div className="flex items-center justify-center gap-1">
                       Bartending
@@ -234,7 +234,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                   </th>
                   <th
                     onClick={() => handleSort('alone')}
-                    className="text-center py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                    className="text-center py-3 px-4 text-xs font-semibold text-[#6b6b75] uppercase tracking-wider cursor-pointer hover:bg-[#1a1a1f] transition-colors select-none"
                   >
                     <div className="flex items-center justify-center gap-1">
                       Solo Work
@@ -243,7 +243,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                   </th>
                   <th
                     onClick={() => handleSort('minShifts')}
-                    className="text-center py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                    className="text-center py-3 px-4 text-xs font-semibold text-[#6b6b75] uppercase tracking-wider cursor-pointer hover:bg-[#1a1a1f] transition-colors select-none"
                   >
                     <div className="flex items-center justify-center gap-1">
                       Min Shifts
@@ -252,7 +252,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                   </th>
                   <th
                     onClick={() => handleSort('status')}
-                    className="text-right py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                    className="text-right py-3 px-4 text-xs font-semibold text-[#6b6b75] uppercase tracking-wider cursor-pointer hover:bg-[#1a1a1f] transition-colors select-none"
                   >
                     <div className="flex items-center justify-end gap-1">
                       Status
@@ -261,7 +261,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-[#2a2a32]">
                 {filteredEmployees.map((emp) => (
                   <tr
                     key={emp.id}
@@ -270,20 +270,20 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                       setIsEditing(false);
                     }}
                     className={`cursor-pointer transition-colors ${selectedEmployee?.id === emp.id
-                      ? 'bg-blue-50'
-                      : 'hover:bg-gray-50'
+                      ? 'bg-[#e5a825]/10'
+                      : 'hover:bg-[#222228]'
                       }`}
                   >
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 bg-gradient-to-br from-gray-400 to-gray-500 rounded-full flex items-center justify-center">
+                        <div className="w-9 h-9 bg-[#a855f7] rounded-full flex items-center justify-center">
                           <span className="text-white font-medium text-sm">
                             {emp.name.charAt(0)}
                           </span>
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-900">{emp.name}</p>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-sm font-medium text-white">{emp.name}</p>
+                          <p className="text-xs text-[#6b6b75]">
                             {emp.bartendingScale >= 4 ? 'Bartender' : 'Server'}
                           </p>
                         </div>
@@ -296,12 +296,12 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                       <span className="text-sm">{getSkillStars(emp.aloneScale)}</span>
                     </td>
                     <td className="py-3 px-4 text-center">
-                      <span className="text-sm text-gray-900">{emp.minShiftsPerWeek || '—'}</span>
+                      <span className="text-sm text-white">{emp.minShiftsPerWeek || '-'}</span>
                     </td>
                     <td className="py-3 px-4 text-right">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${emp.exclusions.length > 0
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-green-100 text-green-800'
+                        ? 'bg-[#e5a825]/10 text-[#e5a825] border border-[#e5a825]/30'
+                        : 'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
                         }`}>
                         {emp.exclusions.length > 0 ? 'Has exclusions' : 'Available'}
                       </span>
@@ -314,13 +314,13 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
         </div>
 
         {/* Employee Details Panel */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+        <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-6">
           {selectedEmployee ? (
             <div>
               {/* Header */}
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center">
+                  <div className="w-14 h-14 bg-[#a855f7] rounded-full flex items-center justify-center">
                     <span className="text-white font-semibold text-xl">
                       {(isEditing ? editName : selectedEmployee.name).charAt(0)}
                     </span>
@@ -331,14 +331,14 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                         type="text"
                         value={editName}
                         onChange={(e) => setEditName(e.target.value)}
-                        className="text-lg font-semibold text-gray-900 border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="text-lg font-semibold text-white bg-[#141417] border border-[#2a2a32] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
                       />
                     ) : (
-                      <h3 className="text-lg font-semibold text-gray-900">
+                      <h3 className="text-lg font-semibold text-white">
                         {selectedEmployee.name}
                       </h3>
                     )}
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-[#6b6b75]">
                       {(isEditing ? editBartending : selectedEmployee.bartendingScale) >= 4 ? 'Bartender' : 'Server'}
                     </p>
                   </div>
@@ -346,7 +346,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                 {!isEditing && (
                   <button
                     onClick={startEditing}
-                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                    className="p-2 text-[#6b6b75] hover:text-[#e5a825] hover:bg-[#e5a825]/10 rounded-lg transition-colors"
                     title="Edit employee"
                   >
                     <EditIcon className="w-5 h-5" />
@@ -358,32 +358,32 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
               <div className="space-y-4 mb-6">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm text-gray-600">Bartending</span>
+                    <span className="text-sm text-[#a0a0a8]">Bartending</span>
                     {isEditing ? (
                       <span className="text-sm">{getSkillStars(editBartending, true, setEditBartending)}</span>
                     ) : (
-                      <span className="text-sm font-medium">{selectedEmployee.bartendingScale}/5</span>
+                      <span className="text-sm font-medium text-white">{selectedEmployee.bartendingScale}/5</span>
                     )}
                   </div>
-                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="w-full h-2 bg-[#2a2a32] rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-blue-500 rounded-full transition-all"
+                      className="h-full bg-[#3b82f6] rounded-full transition-all"
                       style={{ width: `${((isEditing ? editBartending : selectedEmployee.bartendingScale) / 5) * 100}%` }}
                     />
                   </div>
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm text-gray-600">Solo Work</span>
+                    <span className="text-sm text-[#a0a0a8]">Solo Work</span>
                     {isEditing ? (
                       <span className="text-sm">{getSkillStars(editAlone, true, setEditAlone)}</span>
                     ) : (
-                      <span className="text-sm font-medium">{selectedEmployee.aloneScale}/5</span>
+                      <span className="text-sm font-medium text-white">{selectedEmployee.aloneScale}/5</span>
                     )}
                   </div>
-                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="w-full h-2 bg-[#2a2a32] rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-green-500 rounded-full transition-all"
+                      className="h-full bg-[#22c55e] rounded-full transition-all"
                       style={{ width: `${((isEditing ? editAlone : selectedEmployee.aloneScale) / 5) * 100}%` }}
                     />
                   </div>
@@ -393,7 +393,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
               {/* Min Shifts */}
               <div className="mb-6">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Minimum Shifts/Week</span>
+                  <span className="text-sm text-[#a0a0a8]">Minimum Shifts/Week</span>
                   {isEditing ? (
                     <input
                       type="number"
@@ -401,11 +401,11 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                       max="6"
                       value={editMinShifts || ''}
                       onChange={(e) => setEditMinShifts(e.target.value ? parseInt(e.target.value) : undefined)}
-                      placeholder="—"
-                      className="w-16 text-center border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="-"
+                      className="w-16 text-center bg-[#141417] border border-[#2a2a32] rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
                     />
                   ) : (
-                    <span className="text-sm font-medium">{selectedEmployee.minShiftsPerWeek || '—'}</span>
+                    <span className="text-sm font-medium text-white">{selectedEmployee.minShiftsPerWeek || '-'}</span>
                   )}
                 </div>
               </div>
@@ -413,25 +413,25 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
               {/* Preferences */}
               {!isEditing && (
                 <div className="mb-6">
-                  <h4 className="text-sm font-medium text-gray-900 mb-3">Preferences</h4>
+                  <h4 className="text-sm font-medium text-white mb-3">Preferences</h4>
                   <div className="flex flex-wrap gap-2">
                     {selectedEmployee.preferences.prefersMorning && (
-                      <span className="px-2.5 py-1 bg-amber-50 text-amber-700 text-xs rounded-lg">
+                      <span className="px-2.5 py-1 bg-[#e5a825]/10 text-[#e5a825] text-xs rounded-lg border border-[#e5a825]/30">
                         Prefers Morning
                       </span>
                     )}
                     {selectedEmployee.preferences.prefersNight && (
-                      <span className="px-2.5 py-1 bg-purple-50 text-purple-700 text-xs rounded-lg">
+                      <span className="px-2.5 py-1 bg-[#a855f7]/10 text-[#a855f7] text-xs rounded-lg border border-[#a855f7]/30">
                         Prefers Night
                       </span>
                     )}
                     {selectedEmployee.preferences.needsBartenderOnShift && (
-                      <span className="px-2.5 py-1 bg-red-50 text-red-700 text-xs rounded-lg">
+                      <span className="px-2.5 py-1 bg-[#ef4444]/10 text-[#ef4444] text-xs rounded-lg border border-[#ef4444]/30">
                         Needs Bartender Support
                       </span>
                     )}
                     {selectedEmployee.preferences.canOpen && (
-                      <span className="px-2.5 py-1 bg-green-50 text-green-700 text-xs rounded-lg">
+                      <span className="px-2.5 py-1 bg-[#22c55e]/10 text-[#22c55e] text-xs rounded-lg border border-[#22c55e]/30">
                         Can Open
                       </span>
                     )}
@@ -442,7 +442,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
               {/* Availability - View Mode */}
               {!isEditing && (
                 <div className="mb-6">
-                  <h4 className="text-sm font-medium text-gray-900 mb-3">Weekly Availability</h4>
+                  <h4 className="text-sm font-medium text-white mb-3">Weekly Availability</h4>
                   <div className="space-y-2">
                     {dayLabels.map(({ key, label }) => {
                       const dayAvail = selectedEmployee.availability[key] as DayAvailability | null;
@@ -458,7 +458,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
 
                       return (
                         <div key={key} className="flex items-center gap-2">
-                          <span className="w-10 text-xs font-medium text-gray-600">{label}</span>
+                          <span className="w-10 text-xs font-medium text-[#6b6b75]">{label}</span>
                           <div className="flex gap-1">
                             {shiftOptions.map(({ label: shiftLabel, type }) => {
                               const isSelected = shifts.some(s => s.type === type);
@@ -466,8 +466,8 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                                 <span
                                   key={type}
                                   className={`px-2 py-1 text-xs rounded-md font-medium ${isSelected
-                                      ? 'bg-blue-500 text-white'
-                                      : 'bg-slate-100 text-slate-400'
+                                      ? 'bg-[#e5a825] text-[#0d0d0f]'
+                                      : 'bg-[#2a2a32] text-[#6b6b75]'
                                     }`}
                                 >
                                   {shiftLabel}
@@ -485,7 +485,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
               {/* Availability - Edit Mode */}
               {isEditing && editAvailability && (
                 <div className="mb-6">
-                  <h4 className="text-sm font-medium text-gray-900 mb-3">Weekly Availability</h4>
+                  <h4 className="text-sm font-medium text-white mb-3">Weekly Availability</h4>
                   <div className="space-y-2">
                     {dayLabels.map(({ key, label }) => {
                       const isSunday = key === 'sunday';
@@ -499,7 +499,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
 
                       return (
                         <div key={key} className="flex items-center gap-2">
-                          <span className="w-10 text-xs font-medium text-gray-600">{label}</span>
+                          <span className="w-10 text-xs font-medium text-[#6b6b75]">{label}</span>
                           <div className="flex gap-1">
                             {shiftOptions.map(({ label: shiftLabel, type }) => {
                               const isSelected = hasShiftType(key, type);
@@ -509,8 +509,8 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                                   type="button"
                                   onClick={() => toggleShiftTypeForDay(key, type)}
                                   className={`px-2 py-1 text-xs rounded-md font-medium transition-colors ${isSelected
-                                      ? 'bg-blue-500 text-white'
-                                      : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                      ? 'bg-[#e5a825] text-[#0d0d0f]'
+                                      : 'bg-[#2a2a32] text-[#6b6b75] hover:bg-[#3a3a45]'
                                     }`}
                                 >
                                   {shiftLabel}
@@ -530,13 +530,13 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                 <div className="flex gap-2">
                   <button
                     onClick={saveChanges}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    className="flex-1 px-4 py-2 bg-[#e5a825] text-[#0d0d0f] rounded-lg hover:bg-[#f0b429] transition-colors font-medium"
                   >
                     Save Changes
                   </button>
                   <button
                     onClick={cancelEditing}
-                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                    className="px-4 py-2 bg-[#2a2a32] text-[#a0a0a8] rounded-lg hover:bg-[#3a3a45] transition-colors"
                   >
                     Cancel
                   </button>
@@ -544,7 +544,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
               ) : (
                 <button
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="w-full px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
+                  className="w-full px-4 py-2 bg-[#ef4444]/10 text-[#ef4444] rounded-lg hover:bg-[#ef4444]/20 transition-colors flex items-center justify-center gap-2 border border-[#ef4444]/30"
                 >
                   <TrashIcon className="w-4 h-4" />
                   Remove Employee
@@ -553,10 +553,10 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
             </div>
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-center py-12">
-              <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mb-4">
-                <UserIcon className="w-6 h-6 text-gray-400" />
+              <div className="w-12 h-12 bg-[#222228] rounded-xl flex items-center justify-center mb-4 border border-[#2a2a32]">
+                <UserIcon className="w-6 h-6 text-[#6b6b75]" />
               </div>
-              <p className="text-sm text-gray-500">Select an employee to view details</p>
+              <p className="text-sm text-[#6b6b75]">Select an employee to view details</p>
             </div>
           )}
         </div>
@@ -575,23 +575,23 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && selectedEmployee && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4 shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Remove Employee?</h3>
-            <p className="text-gray-600 mb-6">
-              Are you sure you want to remove <strong>{selectedEmployee.name}</strong> from the team?
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-[#1a1a1f] rounded-xl p-6 w-full max-w-md mx-4 shadow-xl border border-[#2a2a32]">
+            <h3 className="text-lg font-semibold text-white mb-2">Remove Employee?</h3>
+            <p className="text-[#a0a0a8] mb-6">
+              Are you sure you want to remove <strong className="text-white">{selectedEmployee.name}</strong> from the team?
               This will also remove any locked shifts for this employee.
             </p>
             <div className="flex gap-3">
               <button
                 onClick={handleDelete}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                className="flex-1 px-4 py-2 bg-[#ef4444] text-white rounded-lg hover:bg-[#dc2626] transition-colors"
               >
                 Remove
               </button>
               <button
                 onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                className="flex-1 px-4 py-2 bg-[#2a2a32] text-[#a0a0a8] rounded-lg hover:bg-[#3a3a45] transition-colors"
               >
                 Cancel
               </button>
@@ -614,10 +614,10 @@ function AddEmployeeModal({ onAdd, onClose }: { onAdd: (emp: Employee) => void; 
     return Array.from({ length: 5 }, (_, i) => (
       <span
         key={i}
-        className={`text-2xl cursor-pointer ${i < level ? 'text-amber-400' : 'text-gray-200'} hover:text-amber-300`}
+        className={`text-2xl cursor-pointer ${i < level ? 'text-[#e5a825]' : 'text-[#3a3a45]'} hover:text-[#f0b429]`}
         onClick={() => onChange(i + 1)}
       >
-        ★
+        *
       </span>
     ));
   };
@@ -654,40 +654,40 @@ function AddEmployeeModal({ onAdd, onClose }: { onAdd: (emp: Employee) => void; 
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4 shadow-xl">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Add New Employee</h3>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm">
+      <div className="bg-[#1a1a1f] rounded-xl p-6 w-full max-w-md mx-4 shadow-xl border border-[#2a2a32]">
+        <h3 className="text-lg font-semibold text-white mb-4">Add New Employee</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+            <label className="block text-sm font-medium text-[#a0a0a8] mb-1">Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Enter employee name"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 bg-[#141417] border border-[#2a2a32] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 placeholder:text-[#6b6b75]"
               autoFocus
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Bartending Skill</label>
+            <label className="block text-sm font-medium text-[#a0a0a8] mb-1">Bartending Skill</label>
             <div className="flex items-center gap-1">
               {getSkillStars(bartending, setBartending)}
-              <span className="ml-2 text-sm text-gray-500">{bartending}/5</span>
+              <span className="ml-2 text-sm text-[#6b6b75]">{bartending}/5</span>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Solo Work Skill</label>
+            <label className="block text-sm font-medium text-[#a0a0a8] mb-1">Solo Work Skill</label>
             <div className="flex items-center gap-1">
               {getSkillStars(alone, setAlone)}
-              <span className="ml-2 text-sm text-gray-500">{alone}/5</span>
+              <span className="ml-2 text-sm text-[#6b6b75]">{alone}/5</span>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Minimum Shifts/Week</label>
+            <label className="block text-sm font-medium text-[#a0a0a8] mb-1">Minimum Shifts/Week</label>
             <input
               type="number"
               min="0"
@@ -695,7 +695,7 @@ function AddEmployeeModal({ onAdd, onClose }: { onAdd: (emp: Employee) => void; 
               value={minShifts || ''}
               onChange={(e) => setMinShifts(e.target.value ? parseInt(e.target.value) : undefined)}
               placeholder="Optional"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 bg-[#141417] border border-[#2a2a32] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 placeholder:text-[#6b6b75]"
             />
           </div>
 
@@ -703,14 +703,14 @@ function AddEmployeeModal({ onAdd, onClose }: { onAdd: (emp: Employee) => void; 
             <button
               type="submit"
               disabled={!name.trim()}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-2 bg-[#e5a825] text-[#0d0d0f] rounded-lg hover:bg-[#f0b429] transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
             >
               Add Employee
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              className="flex-1 px-4 py-2 bg-[#2a2a32] text-[#a0a0a8] rounded-lg hover:bg-[#3a3a45] transition-colors"
             >
               Cancel
             </button>
@@ -765,7 +765,7 @@ function TrashIcon({ className }: { className?: string }) {
 function SortIcon({ active, direction }: { active: boolean; direction: 'asc' | 'desc' }) {
   return (
     <svg
-      className={`w-4 h-4 transition-all ${active ? 'text-amber-500' : 'text-slate-300'}`}
+      className={`w-4 h-4 transition-all ${active ? 'text-[#e5a825]' : 'text-[#3a3a45]'}`}
       fill="none"
       viewBox="0 0 24 24"
       stroke="currentColor"

@@ -50,23 +50,22 @@ function NotesIcon({ className }: { className?: string }) {
 export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
   const navItems = [
     { id: 'schedule', label: 'Schedule', icon: CalendarIcon },
-    { id: 'staffing', label: 'Staffing Needs', icon: GridIcon },
-    { id: 'notes', label: 'Schedule Notes', icon: NotesIcon },
+    { id: 'notes-staffing', label: 'Notes & Staffing', icon: NotesIcon },
     { id: 'team', label: 'Team', icon: UsersIcon },
     { id: 'settings', label: 'Settings', icon: SettingsIcon },
   ];
 
   return (
-    <aside className="w-64 bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 min-h-screen flex flex-col shadow-2xl">
+    <aside className="w-64 bg-[#0d0d0f] min-h-screen flex flex-col border-r border-[#2a2a32]">
       {/* Logo */}
-      <div className="p-6 border-b border-slate-700/50">
+      <div className="p-6 border-b border-[#2a2a32]">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/30 transform hover:scale-105 transition-transform">
-            <span className="text-white font-bold text-xl">B</span>
+          <div className="w-11 h-11 bg-[#e5a825] rounded-xl flex items-center justify-center shadow-lg shadow-[#e5a825]/20 transform hover:scale-105 transition-transform">
+            <span className="text-[#0d0d0f] font-bold text-xl">B</span>
           </div>
           <div>
             <h1 className="font-bold text-white text-lg tracking-tight">Bobola&apos;s</h1>
-            <p className="text-xs text-slate-400 font-medium">Schedule Manager</p>
+            <p className="text-xs text-[#6b6b75] font-medium">Schedule Manager</p>
           </div>
         </div>
       </div>
@@ -83,11 +82,11 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
                   onClick={() => setActiveTab(item.id)}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
                     isActive
-                      ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-orange-500/30'
-                      : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'
+                      ? 'bg-[#e5a825] text-[#0d0d0f] shadow-lg shadow-[#e5a825]/20'
+                      : 'text-[#a0a0a8] hover:bg-[#1a1a1f] hover:text-white'
                   }`}
                 >
-                  <Icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                  <Icon className={`w-5 h-5 ${isActive ? 'text-[#0d0d0f]' : 'text-[#6b6b75]'}`} />
                   {item.label}
                 </button>
               </li>
@@ -97,16 +96,16 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
       </nav>
 
       {/* User Profile */}
-      <div className="p-4 border-t border-slate-700/50">
-        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-700/30 hover:bg-slate-700/50 cursor-pointer transition-all duration-200 group">
-          <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/30 ring-2 ring-emerald-400/20 group-hover:ring-emerald-400/40 transition-all">
+      <div className="p-4 border-t border-[#2a2a32]">
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[#1a1a1f] hover:bg-[#222228] cursor-pointer transition-all duration-200 group">
+          <div className="w-10 h-10 bg-[#a855f7] rounded-full flex items-center justify-center shadow-lg shadow-[#a855f7]/20 ring-2 ring-[#a855f7]/20 group-hover:ring-[#a855f7]/40 transition-all">
             <span className="text-white font-semibold text-sm">DT</span>
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-white truncate">Derek</p>
-            <p className="text-xs text-slate-400 truncate">Manager</p>
+            <p className="text-xs text-[#6b6b75] truncate">Manager</p>
           </div>
-          <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+          <div className="w-2 h-2 bg-[#22c55e] rounded-full"></div>
         </div>
       </div>
     </aside>

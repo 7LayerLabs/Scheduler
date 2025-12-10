@@ -95,7 +95,7 @@ export interface ScheduleConflict {
 }
 
 export interface ScheduleWarning {
-  type: 'overtime' | 'under_hours' | 'preference_violated' | 'approaching_limit';
+  type: 'overtime' | 'under_hours' | 'preference_violated' | 'approaching_limit' | 'coverage_needed';
   employeeId?: string;
   message: string;
 }

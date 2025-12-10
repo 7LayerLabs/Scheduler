@@ -110,24 +110,24 @@ export default function StaffingView({
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Staffing Needs</h1>
-          <p className="text-sm text-gray-500 mt-1">Configure time slots and notes for each day</p>
+          <h1 className="text-3xl font-bold text-white">Staffing Needs</h1>
+          <p className="text-sm text-[#6b6b75] mt-1">Configure time slots and notes for each day</p>
         </div>
 
         {/* Week Navigation */}
-        <div className="flex items-center bg-white rounded-xl shadow-sm border border-slate-200 p-1">
+        <div className="flex items-center bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-1">
           <button
             onClick={() => changeWeek(-1)}
-            className="p-2 hover:bg-slate-50 text-slate-500 hover:text-slate-700 rounded-lg transition-colors"
+            className="p-2 hover:bg-[#222228] text-[#6b6b75] hover:text-white rounded-lg transition-colors"
           >
             <ChevronLeftIcon className="w-5 h-5" />
           </button>
-          <span className="px-4 py-1 text-sm font-medium text-slate-700 min-w-[200px] text-center">
+          <span className="px-4 py-1 text-sm font-medium text-white min-w-[200px] text-center">
             {formatWeekRange(weekStart)}
           </span>
           <button
             onClick={() => changeWeek(1)}
-            className="p-2 hover:bg-slate-50 text-slate-500 hover:text-slate-700 rounded-lg transition-colors"
+            className="p-2 hover:bg-[#222228] text-[#6b6b75] hover:text-white rounded-lg transition-colors"
           >
             <ChevronRightIcon className="w-5 h-5" />
           </button>
@@ -141,14 +141,14 @@ export default function StaffingView({
           const slots = dayData.slots || [];
 
           return (
-            <div key={key} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+            <div key={key} className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-5 hover:border-[#3a3a45] transition-colors">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">{fullLabel}</h3>
+                <h3 className="text-lg font-semibold text-white">{fullLabel}</h3>
                 <div className="flex items-center gap-2">
                   {/* Copy Button */}
                   <button
                     onClick={() => copyDay(key)}
-                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                    className="p-1.5 text-[#6b6b75] hover:text-[#3b82f6] hover:bg-[#3b82f6]/10 rounded-lg transition-colors"
                     title="Copy this day's slots"
                   >
                     <CopyIcon className="w-4 h-4" />
@@ -158,14 +158,14 @@ export default function StaffingView({
                     onClick={() => pasteDay(key)}
                     disabled={!copiedDay}
                     className={`p-1.5 rounded-lg transition-colors ${copiedDay
-                      ? 'text-slate-400 hover:text-green-600 hover:bg-green-50'
-                      : 'text-slate-200 cursor-not-allowed'
+                      ? 'text-[#6b6b75] hover:text-[#22c55e] hover:bg-[#22c55e]/10'
+                      : 'text-[#3a3a45] cursor-not-allowed'
                       }`}
                     title={copiedDay ? `Paste from ${copiedDay.fromDay}` : 'Copy a day first'}
                   >
                     <PasteIcon className="w-4 h-4" />
                   </button>
-                  <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
+                  <span className="text-xs font-medium text-[#6b6b75] bg-[#222228] px-2 py-1 rounded-full border border-[#2a2a32]">
                     {slots.length} slot{slots.length !== 1 ? 's' : ''}
                   </span>
                 </div>
@@ -174,8 +174,8 @@ export default function StaffingView({
               {/* Time Slots */}
               <div className="space-y-2 mb-4">
                 {slots.map((slot, index) => (
-                  <div key={slot.id} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200">
-                    <span className="text-xs font-medium text-slate-500 w-6">{index + 1}.</span>
+                  <div key={slot.id} className="flex items-center gap-2 p-2 bg-[#141417] rounded-lg border border-[#2a2a32]">
+                    <span className="text-xs font-medium text-[#6b6b75] w-6">{index + 1}.</span>
 
                     {/* Label */}
                     <input
@@ -183,7 +183,7 @@ export default function StaffingView({
                       value={slot.label || ''}
                       onChange={(e) => updateSlot(key, slot.id, 'label', e.target.value)}
                       placeholder="Label"
-                      className="flex-1 px-2 py-1 text-sm border border-slate-200 rounded focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent bg-white"
+                      className="flex-1 px-2 py-1 text-sm bg-[#0d0d0f] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825] placeholder:text-[#6b6b75]"
                     />
 
                     {/* Start Time */}
@@ -191,26 +191,26 @@ export default function StaffingView({
                       type="time"
                       value={slot.startTime}
                       onChange={(e) => updateSlot(key, slot.id, 'startTime', e.target.value)}
-                      className="px-2 py-1 text-sm border border-slate-200 rounded focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      className="px-2 py-1 text-sm bg-[#0d0d0f] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
                     />
-                    <span className="text-slate-400 text-xs">to</span>
+                    <span className="text-[#6b6b75] text-xs">to</span>
                     {/* End Time */}
                     <input
                       type="time"
                       value={slot.endTime}
                       onChange={(e) => updateSlot(key, slot.id, 'endTime', e.target.value)}
-                      className="px-2 py-1 text-sm border border-slate-200 rounded focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      className="px-2 py-1 text-sm bg-[#0d0d0f] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
                     />
 
                     {/* Time Display */}
-                    <span className="text-xs text-slate-500 w-28 text-right">
+                    <span className="text-xs text-[#6b6b75] w-28 text-right">
                       {formatTimeDisplay(slot.startTime)} - {formatTimeDisplay(slot.endTime)}
                     </span>
 
                     {/* Remove Button */}
                     <button
                       onClick={() => removeSlot(key, slot.id)}
-                      className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                      className="p-1 text-[#6b6b75] hover:text-[#ef4444] hover:bg-[#ef4444]/10 rounded transition-colors"
                     >
                       <XIcon className="w-4 h-4" />
                     </button>
@@ -220,7 +220,7 @@ export default function StaffingView({
                 {/* Add Slot Button */}
                 <button
                   onClick={() => addSlot(key)}
-                  className="w-full py-2 px-3 border-2 border-dashed border-slate-200 rounded-lg text-sm text-slate-500 hover:border-amber-400 hover:text-amber-600 hover:bg-amber-50/50 transition-colors flex items-center justify-center gap-2"
+                  className="w-full py-2 px-3 border-2 border-dashed border-[#2a2a32] rounded-lg text-sm text-[#6b6b75] hover:border-[#e5a825] hover:text-[#e5a825] hover:bg-[#e5a825]/5 transition-colors flex items-center justify-center gap-2"
                 >
                   <PlusIcon className="w-4 h-4" />
                   Add Slot
@@ -229,7 +229,7 @@ export default function StaffingView({
 
               {/* Notes Section */}
               <div>
-                <label className="text-xs font-medium text-slate-600 mb-1 block">
+                <label className="text-xs font-medium text-[#6b6b75] mb-1 block">
                   Notes for this day
                 </label>
                 <textarea
@@ -237,7 +237,7 @@ export default function StaffingView({
                   onChange={(e) => updateNotes(key, e.target.value)}
                   placeholder="e.g., Krisann leaves at 1pm, need coverage from 1pm..."
                   rows={2}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent resize-none"
+                  className="w-full px-3 py-2 text-sm bg-[#141417] border border-[#2a2a32] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825] resize-none placeholder:text-[#6b6b75]"
                 />
               </div>
             </div>
@@ -246,16 +246,16 @@ export default function StaffingView({
       </div>
 
       {/* Summary */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+      <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-4">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-700">Weekly Total</span>
-          <span className="text-sm text-gray-900 font-semibold">
+          <span className="text-sm font-medium text-[#a0a0a8]">Weekly Total</span>
+          <span className="text-sm text-white font-semibold">
             {getTotalSlots()} time slots
           </span>
         </div>
       </div>
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-[#6b6b75]">
         Changes take effect when you regenerate the schedule. Notes can specify time-based instructions like &quot;Ali leaves at 1pm&quot;.
       </p>
     </div>
@@ -309,4 +309,3 @@ function PasteIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-

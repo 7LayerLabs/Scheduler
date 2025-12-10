@@ -1,8 +1,31 @@
 @import "tailwindcss";
 
 :root {
-  --background: #fafafa;
-  --foreground: #171717;
+  /* Dark theme colors matching inkelog.io style */
+  --background: #0d0d0f;
+  --background-secondary: #141417;
+  --background-card: #1a1a1f;
+  --background-elevated: #222228;
+  --foreground: #ffffff;
+  --foreground-muted: #a0a0a8;
+  --foreground-subtle: #6b6b75;
+  
+  /* Accent colors */
+  --accent-gold: #e5a825;
+  --accent-gold-hover: #f0b429;
+  --accent-gold-muted: rgba(229, 168, 37, 0.15);
+  --accent-purple: #a855f7;
+  --accent-purple-muted: rgba(168, 85, 247, 0.15);
+  --accent-red: #ef4444;
+  --accent-red-muted: rgba(239, 68, 68, 0.15);
+  --accent-green: #22c55e;
+  --accent-green-muted: rgba(34, 197, 94, 0.15);
+  --accent-blue: #3b82f6;
+  --accent-blue-muted: rgba(59, 130, 246, 0.15);
+  
+  /* Border colors */
+  --border-primary: #2a2a32;
+  --border-secondary: #3a3a45;
 }
 
 @theme inline {
@@ -23,35 +46,35 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Custom scrollbar for modern browsers */
+/* Custom scrollbar for dark theme */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: var(--background-secondary);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #f59e0b, #ea580c);
+  background: var(--border-secondary);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #d97706, #dc2626);
+  background: var(--accent-gold);
 }
 
 /* Selection styling */
 ::selection {
-  background-color: #fbbf24;
-  color: #1e293b;
+  background-color: var(--accent-gold);
+  color: var(--background);
 }
 
 /* Focus ring improvements */
 *:focus-visible {
-  outline: 2px solid #f59e0b;
+  outline: 2px solid var(--accent-gold);
   outline-offset: 2px;
 }
 
@@ -71,7 +94,12 @@ button, a, input, textarea, select {
 }
 
 .animate-shimmer {
-  background: linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 50%, #f1f5f9 100%);
+  background: linear-gradient(90deg, var(--background-card) 0%, var(--background-elevated) 50%, var(--background-card) 100%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
+}
+
+/* Custom input styling for dark theme */
+input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
 }

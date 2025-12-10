@@ -2,7 +2,7 @@ import { ScheduleOverride, DayOfWeek, Employee } from './types';
 import { employees as defaultEmployees } from './employees';
 
 // Parse natural language notes into schedule overrides
-export function parseScheduleNotes(notes: string, employeeList?: Employee[]): ScheduleOverride[] {
+export function parseScheduleNotes(notes: string, employeeList?: Employee[], weekStart?: Date): ScheduleOverride[] {
   const employees = employeeList || defaultEmployees;
   const overrides: ScheduleOverride[] = [];
 
@@ -12,17 +12,174 @@ export function parseScheduleNotes(notes: string, employeeList?: Employee[]): Sc
   // Split by common delimiters
   const sentences = text.split(/[.,;\n]+/).map(s => s.trim()).filter(s => s.length > 0);
 
+  console.log('Parsing notes:', notes);
+  console.log('Sentences:', sentences);
+
   for (const sentence of sentences) {
-    const parsed = parseSentence(sentence, employees);
+    console.log('Processing sentence:', sentence);
+
+    // First try to parse as a business-wide rule (CLOSED, closing early, etc.)
+    const businessRule = parseBusinessRule(sentence, weekStart);
+    console.log('Business rule result:', businessRule);
+    if (businessRule) {
+      overrides.push(...businessRule);
+      continue;
+    }
+
+    // Then try employee-specific rules
+    const parsed = parseSentence(sentence, employees, weekStart);
+    console.log('Employee rule result:', parsed);
     if (parsed) {
       overrides.push(...parsed);
     }
   }
 
+  console.log('Final overrides:', overrides);
   return overrides;
 }
 
-function parseSentence(sentence: string, employees: Employee[]): ScheduleOverride[] | null {
+// Parse business-wide rules like "December 24 closing at 2pm" or "December 25 CLOSED"
+// Also handles: "Closed Wednesday, December 24 at 2pm", "Closed all day Thursday"
+function parseBusinessRule(sentence: string, weekStart?: Date): ScheduleOverride[] | null {
+  const lowerSentence = sentence.toLowerCase();
+
+  // Find if there's a specific date mentioned
+  const dateInfo = findSpecificDate(sentence, weekStart);
+  console.log('findSpecificDate for:', sentence, '=> result:', dateInfo);
+  if (!dateInfo) return null;
+
+  const overrides: ScheduleOverride[] = [];
+
+  // Check for fully CLOSED day (various patterns)
+  // "closed all day", "closed thursday", "closed all day thursday", etc.
+  const isFullyClosed =
+    /closed\s+all\s*day/i.test(lowerSentence) ||
+    /close\s+all\s*day/i.test(lowerSentence) ||
+    lowerSentence.includes('not open') ||
+    // "Closed [day]" without a time - check if there's NO time mentioned
+    (lowerSentence.includes('closed') && !lowerSentence.match(/at\s+\d|closing at|\d\s*(am|pm)/i));
+
+  if (isFullyClosed) {
+    // Create exclude overrides for ALL employees on this day
+    overrides.push({
+      id: `business-closed-${dateInfo.day}-${Date.now()}`,
+      type: 'exclude',
+      employeeId: '__ALL__', // Special marker for "all employees"
+      day: dateInfo.day,
+      shiftType: 'any',
+      note: `CLOSED: ${sentence}`,
+    });
+    return overrides;
+  }
+
+  // Check for closing early - multiple patterns:
+  // "closing at 2pm", "close at 2", "closed at 2pm", "at 2pm"
+  // Pattern: looks for "at X" or "at Xpm" or "X pm" near the date
+  const timeMatch = lowerSentence.match(/at\s+(\d{1,2}):?(\d{2})?\s*(am|pm)?/i) ||
+                    lowerSentence.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)/i);
+
+  if (timeMatch) {
+    let hour = parseInt(timeMatch[1]);
+    const minutes = timeMatch[2] || '00';
+    const ampm = timeMatch[3]?.toLowerCase();
+
+    // Handle AM/PM
+    if (ampm === 'pm' && hour < 12) hour += 12;
+    if (ampm === 'am' && hour === 12) hour = 0;
+    // If no am/pm specified, assume PM for 1-6
+    if (!ampm && hour >= 1 && hour <= 6) hour += 12;
+
+    const closeTime = `${hour.toString().padStart(2, '0')}:${minutes}`;
+
+    // Create a special override that sets the closing time for this day
+    overrides.push({
+      id: `business-early-close-${dateInfo.day}-${Date.now()}`,
+      type: 'custom_time',
+      employeeId: '__CLOSE_EARLY__', // Special marker
+      day: dateInfo.day,
+      shiftType: 'any',
+      customEndTime: closeTime,
+      note: `Early close at ${closeTime}: ${sentence}`,
+    });
+    return overrides;
+  }
+
+  return null;
+}
+
+// Find specific date in sentence (December 24, Dec 24, 12/24, etc.)
+function findSpecificDate(sentence: string, weekStart?: Date): { day: DayOfWeek; date: string } | null {
+  const lowerSentence = sentence.toLowerCase();
+
+  // Month names and abbreviations
+  const months: Record<string, number> = {
+    'january': 1, 'jan': 1,
+    'february': 2, 'feb': 2,
+    'march': 3, 'mar': 3,
+    'april': 4, 'apr': 4,
+    'may': 5,
+    'june': 6, 'jun': 6,
+    'july': 7, 'jul': 7,
+    'august': 8, 'aug': 8,
+    'september': 9, 'sep': 9, 'sept': 9,
+    'october': 10, 'oct': 10,
+    'november': 11, 'nov': 11,
+    'december': 12, 'dec': 12,
+  };
+
+  let month: number | null = null;
+  let day: number | null = null;
+
+  // Pattern 1: "December 24", "Dec 24", "Dec. 24"
+  const monthNamePattern = /(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\.?\s*(\d{1,2})/i;
+  const monthMatch = lowerSentence.match(monthNamePattern);
+  if (monthMatch) {
+    month = months[monthMatch[1].toLowerCase()];
+    day = parseInt(monthMatch[2]);
+  }
+
+  // Pattern 2: "12/24", "12-24"
+  if (!month) {
+    const slashPattern = /(\d{1,2})[\/\-](\d{1,2})/;
+    const slashMatch = sentence.match(slashPattern);
+    if (slashMatch) {
+      month = parseInt(slashMatch[1]);
+      day = parseInt(slashMatch[2]);
+    }
+  }
+
+  if (!month || !day) return null;
+
+  // Get the year - use current year first, check if date makes sense for scheduling
+  const now = new Date();
+  let year = now.getFullYear();
+
+  // Create date with current year
+  let targetDate = new Date(year, month - 1, day);
+
+  // If the date is more than 60 days in the past, assume next year
+  // This allows scheduling for dates in the recent past (like last week)
+  // but moves far-past dates to next year
+  const sixtyDaysAgo = new Date(now);
+  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+  if (targetDate < sixtyDaysAgo) {
+    year++;
+    targetDate = new Date(year, month - 1, day);
+  }
+
+  const dayOfWeek = targetDate.getDay();
+  const dayNames: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const dayName = dayNames[dayOfWeek];
+
+  // Format as YYYY-MM-DD
+  const dateStr = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+
+  console.log('Date parsed:', { month, day, year, dayOfWeek, dayName, dateStr });
+
+  return { day: dayName, date: dateStr };
+}
+
+function parseSentence(sentence: string, employees: Employee[], weekStart?: Date): ScheduleOverride[] | null {
   const overrides: ScheduleOverride[] = [];
 
   // Find employee name in sentence
@@ -375,10 +532,26 @@ export function formatParsedOverrides(overrides: ScheduleOverride[], employeeLis
   const formatted: string[] = [];
 
   for (const override of overrides) {
+    const dayLabel = override.day.charAt(0).toUpperCase() + override.day.slice(1);
+
+    // Handle business-wide rules
+    if (override.employeeId === '__ALL__') {
+      if (override.type === 'exclude') {
+        formatted.push(`🚫 ${dayLabel} - CLOSED`);
+      }
+      continue;
+    }
+
+    if (override.employeeId === '__CLOSE_EARLY__') {
+      const closeTime = override.customEndTime ? formatTimeDisplay(override.customEndTime) : '';
+      formatted.push(`⏰ ${dayLabel} - Close at ${closeTime}`);
+      continue;
+    }
+
+    // Regular employee rules
     const emp = employees.find(e => e.id === override.employeeId);
     if (!emp) continue;
 
-    const dayLabel = override.day.charAt(0).toUpperCase() + override.day.slice(1);
     const shiftLabel = override.shiftType === 'any' ? '' : ` ${override.shiftType}`;
 
     switch (override.type) {

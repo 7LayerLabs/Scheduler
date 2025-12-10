@@ -33,14 +33,14 @@ export default function NotesView({ notes, setNotes, setOverrides, employees }: 
     <div className="space-y-6">
       {/* Page Header */}
       <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Schedule Notes</h1>
-        <p className="text-sm text-gray-500 mt-1">Add instructions that will be applied when generating the schedule</p>
+        <h1 className="text-3xl font-bold text-white">Schedule Notes</h1>
+        <p className="text-sm text-[#6b6b75] mt-1">Add instructions that will be applied when generating the schedule</p>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+      <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-6">
         <div className="grid grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-[#a0a0a8] mb-2">
               Scheduling Instructions
             </label>
             <textarea
@@ -53,29 +53,29 @@ Examples:
 - Kris Ann off Tuesday
 - Ali works Friday night
 - Heidi Wed thru Fri morning"
-              className="w-full h-64 p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              className="w-full h-64 p-4 bg-[#141417] border border-[#2a2a32] rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825] resize-none placeholder:text-[#6b6b75]"
             />
-            <p className="text-xs text-gray-500 mt-2">
+            <p className="text-xs text-[#6b6b75] mt-2">
               Keywords: &quot;opens&quot;, &quot;off&quot;, &quot;night&quot;, &quot;morning&quot;, &quot;prefers&quot;, &quot;closing&quot;, &quot;works&quot; - Nicknames work too (Chris = Kris Ann, Hales = Haley, etc.)
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-[#a0a0a8] mb-2">
               Parsed Rules {parsedPreview.length > 0 && `(${parsedPreview.length})`}
             </label>
-            <div className="h-64 bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-y-auto">
+            <div className="h-64 bg-[#141417] border border-[#2a2a32] rounded-lg p-4 overflow-y-auto">
               {parsedPreview.length > 0 ? (
                 <div className="space-y-2">
                   {parsedPreview.map((text, idx) => (
                     <div
                       key={idx}
                       className={`px-3 py-2 rounded-lg text-sm font-medium ${
-                        text.startsWith('✓')
-                          ? 'bg-green-50 text-green-700 border border-green-200'
-                          : text.startsWith('✗')
-                          ? 'bg-red-50 text-red-700 border border-red-200'
-                          : 'bg-blue-50 text-blue-700 border border-blue-200'
+                        text.startsWith('Y')
+                          ? 'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
+                          : text.startsWith('X')
+                          ? 'bg-[#ef4444]/10 text-[#ef4444] border border-[#ef4444]/30'
+                          : 'bg-[#3b82f6]/10 text-[#3b82f6] border border-[#3b82f6]/30'
                       }`}
                     >
                       {text}
@@ -83,13 +83,13 @@ Examples:
                   ))}
                 </div>
               ) : (
-                <div className="h-full flex items-center justify-center text-sm text-gray-400">
+                <div className="h-full flex items-center justify-center text-sm text-[#6b6b75]">
                   Rules will appear here as you type
                 </div>
               )}
             </div>
             {parsedPreview.length > 0 && (
-              <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
+              <p className="text-xs text-[#22c55e] mt-2 flex items-center gap-1">
                 <CheckIcon className="w-3 h-3" />
                 Click &quot;Regenerate&quot; on the Schedule page to apply these rules
               </p>
