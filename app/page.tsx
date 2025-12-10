@@ -4,7 +4,29 @@ import { useState, useMemo, useEffect } from 'react';
 import { generateSchedule } from '@/lib/scheduler';
 import { employees as initialEmployees } from '@/lib/employees';
 import { Employee, WeeklySchedule, ScheduleOverride, LockedShift, WeeklyStaffingNeeds } from '@/lib/types';
-import { db, useCurrentUser, signOut, User, useIsFirstUser, createUserProfile } from '@/lib/instantdb';
+import {
+  db,
+  useCurrentUser,
+  signOut,
+  User,
+  useIsFirstUser,
+  createUserProfile,
+  useEmployees,
+  createEmployee,
+  updateEmployee as updateEmployeeDB,
+  deleteEmployee,
+  bulkCreateEmployees,
+  useAppSettings,
+  updateLogoUrl,
+  updateDefaultStaffingTemplate,
+  useWeeklyStaffing,
+  updateWeeklyStaffing,
+  usePermanentRules,
+  updatePermanentRules,
+  useWeeklyRules,
+  updateWeeklyRulesForWeek,
+  updateUserProfilePic,
+} from '@/lib/instantdb';
 import Sidebar from '@/components/Sidebar';
 import ScheduleView from '@/components/ScheduleView';
 import TeamView from '@/components/TeamView';
@@ -22,6 +44,16 @@ export default function Home() {
   const [showLogin, setShowLogin] = useState(false);
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
 
+  // InstantDB data hooks
+  const { employees: dbEmployees, isLoading: employeesLoading } = useEmployees();
+  const { logoUrl: dbLogoUrl, defaultStaffingTemplate: dbDefaultTemplate, isLoading: settingsLoading } = useAppSettings();
+  const { staffingByWeek: dbStaffingByWeek, notesByWeek: dbNotesByWeek, isLoading: staffingLoading } = useWeeklyStaffing();
+  const { rules: dbPermanentRules, rulesDisplay: dbPermanentRulesDisplay, isLoading: permanentRulesLoading } = usePermanentRules();
+  const { rulesByWeek: dbRulesByWeek, displayByWeek: dbDisplayByWeek, isLoading: weeklyRulesLoading } = useWeeklyRules();
+
+  // Migration state
+  const [hasMigrated, setHasMigrated] = useState(false);
+
   const [activeTab, setActiveTab] = useState('schedule');
   const [weekStart, setWeekStart] = useState<Date>(() => {
     const today = new Date();
@@ -31,125 +63,118 @@ export default function Home() {
   });
   const [schedule, setSchedule] = useState<WeeklySchedule | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  // Store notes per week using week start date as key
-  const [weeklyNotes, setWeeklyNotes] = useState<Record<string, string>>({});
-  const [weeklyOverrides, setWeeklyOverrides] = useState<Record<string, ScheduleOverride[]>>({});
 
   // Get week key for storage
   const getWeekKey = (date: Date) => date.toISOString().split('T')[0];
   const currentWeekKey = getWeekKey(weekStart);
 
-  // Get notes for current week
-  const notes = weeklyNotes[currentWeekKey] || '';
-  const setNotes = (newNotes: string) => {
-    setWeeklyNotes(prev => ({ ...prev, [currentWeekKey]: newNotes }));
+  // Employees from InstantDB (with fallback to initial employees for migration)
+  const employees = dbEmployees.length > 0 ? dbEmployees : initialEmployees;
+
+  // Notes from InstantDB
+  const notes = dbNotesByWeek[currentWeekKey] || '';
+  const setNotes = async (newNotes: string) => {
+    // Get current staffing for this week
+    const currentStaffing = dbStaffingByWeek[currentWeekKey] || dbDefaultTemplate || DEFAULT_STAFFING_NEEDS;
+    await updateWeeklyStaffing(currentWeekKey, currentStaffing, newNotes);
   };
 
-  // Get overrides for current week
-  const overrides = weeklyOverrides[currentWeekKey] || [];
-  const setOverrides = (newOverrides: ScheduleOverride[]) => {
-    setWeeklyOverrides(prev => ({ ...prev, [currentWeekKey]: newOverrides }));
+  // Overrides (for compatibility)
+  const overrides = [...(dbPermanentRules || []), ...(dbRulesByWeek[currentWeekKey] || [])];
+  const setOverrides = () => {}; // No longer needed, rules are managed separately
+
+  // Permanent rules from InstantDB
+  const permanentRules = dbPermanentRules || [];
+  const permanentRulesDisplay = dbPermanentRulesDisplay || [];
+
+  const setPermanentRules = async (rules: ScheduleOverride[]) => {
+    await updatePermanentRules(rules, permanentRulesDisplay);
+  };
+  const setPermanentRulesDisplay = async (display: string[]) => {
+    await updatePermanentRules(permanentRules, display);
   };
 
-  // Permanent rules that apply to ALL weeks - load from localStorage
-  const [permanentRules, setPermanentRulesState] = useState<ScheduleOverride[]>([]);
-  const [permanentRulesDisplay, setPermanentRulesDisplayState] = useState<string[]>([]);
+  // Weekly rules from InstantDB
+  const weeklyLockedRules = dbRulesByWeek;
+  const weeklyLockedRulesDisplay = dbDisplayByWeek;
+  const weekLockedRules = dbRulesByWeek[currentWeekKey] || [];
+  const weekLockedRulesDisplay = dbDisplayByWeek[currentWeekKey] || [];
 
-  // Week-specific locked rules (stored per week) - load from localStorage
-  const [weeklyLockedRules, setWeeklyLockedRulesState] = useState<Record<string, ScheduleOverride[]>>({});
-  const [weeklyLockedRulesDisplay, setWeeklyLockedRulesDisplayState] = useState<Record<string, string[]>>({});
-
-  // Load rules from localStorage on mount
-  useEffect(() => {
-    try {
-      const savedPermanentRules = localStorage.getItem('bobolas-permanent-rules');
-      const savedPermanentDisplay = localStorage.getItem('bobolas-permanent-display');
-      const savedWeeklyRules = localStorage.getItem('bobolas-weekly-rules');
-      const savedWeeklyDisplay = localStorage.getItem('bobolas-weekly-display');
-
-      if (savedPermanentRules) setPermanentRulesState(JSON.parse(savedPermanentRules));
-      if (savedPermanentDisplay) setPermanentRulesDisplayState(JSON.parse(savedPermanentDisplay));
-      if (savedWeeklyRules) setWeeklyLockedRulesState(JSON.parse(savedWeeklyRules));
-      if (savedWeeklyDisplay) setWeeklyLockedRulesDisplayState(JSON.parse(savedWeeklyDisplay));
-    } catch (e) {
-      console.error('Error loading rules from localStorage:', e);
-    }
-  }, []);
-
-  // Save permanent rules to localStorage
-  const setPermanentRules = (rules: ScheduleOverride[]) => {
-    setPermanentRulesState(rules);
-    localStorage.setItem('bobolas-permanent-rules', JSON.stringify(rules));
+  const setWeekLockedRules = async (rules: ScheduleOverride[]) => {
+    await updateWeeklyRulesForWeek(currentWeekKey, rules, weekLockedRulesDisplay);
   };
-  const setPermanentRulesDisplay = (display: string[]) => {
-    setPermanentRulesDisplayState(display);
-    localStorage.setItem('bobolas-permanent-display', JSON.stringify(display));
+  const setWeekLockedRulesDisplay = async (display: string[]) => {
+    await updateWeeklyRulesForWeek(currentWeekKey, weekLockedRules, display);
   };
 
-  // Save weekly rules to localStorage
-  const setWeeklyLockedRules = (newWeeklyRules: Record<string, ScheduleOverride[]>) => {
-    setWeeklyLockedRulesState(newWeeklyRules);
-    localStorage.setItem('bobolas-weekly-rules', JSON.stringify(newWeeklyRules));
-  };
-  const setWeeklyLockedRulesDisplay = (newWeeklyDisplay: Record<string, string[]>) => {
-    setWeeklyLockedRulesDisplayState(newWeeklyDisplay);
-    localStorage.setItem('bobolas-weekly-display', JSON.stringify(newWeeklyDisplay));
-  };
-
-  // Get locked rules for current week
-  const weekLockedRules = weeklyLockedRules[currentWeekKey] || [];
-  const weekLockedRulesDisplay = weeklyLockedRulesDisplay[currentWeekKey] || [];
-
-  const setWeekLockedRules = (rules: ScheduleOverride[]) => {
-    const newWeeklyRules = { ...weeklyLockedRules, [currentWeekKey]: rules };
-    setWeeklyLockedRules(newWeeklyRules);
-  };
-  const setWeekLockedRulesDisplay = (display: string[]) => {
-    const newWeeklyDisplay = { ...weeklyLockedRulesDisplay, [currentWeekKey]: display };
-    setWeeklyLockedRulesDisplay(newWeeklyDisplay);
-  };
+  // For compatibility with existing components
+  const setWeeklyLockedRules = () => {};
+  const setWeeklyLockedRulesDisplay = () => {};
 
   const [lockedShifts, setLockedShifts] = useState<LockedShift[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
   const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
-  // Logo state with localStorage persistence
-  const [logoUrl, setLogoUrlState] = useState<string | null>(null);
+  // Logo from InstantDB
+  const logoUrl = dbLogoUrl;
+  const setLogoUrl = async (url: string | null) => {
+    await updateLogoUrl(url);
+  };
 
-  // Profile picture state with localStorage persistence
-  const [profilePicUrl, setProfilePicUrlState] = useState<string | null>(null);
+  // Profile picture from user profile in InstantDB
+  const profilePicUrl = userProfile?.profilePicUrl || null;
+  const setProfilePicUrl = async (url: string | null) => {
+    if (userProfile?.id) {
+      await updateUserProfilePic(userProfile.id, url);
+    }
+  };
 
-  // Load logo and profile pic from localStorage on mount
+  // Migration: Move data from localStorage to InstantDB on first load
   useEffect(() => {
-    try {
-      const savedLogo = localStorage.getItem('bobolas-logo');
-      if (savedLogo) setLogoUrlState(savedLogo);
-      const savedProfilePic = localStorage.getItem('bobolas-profile-pic');
-      if (savedProfilePic) setProfilePicUrlState(savedProfilePic);
-    } catch (e) {
-      console.error('Error loading from localStorage:', e);
-    }
-  }, []);
+    const migrateData = async () => {
+      if (hasMigrated || employeesLoading || !authUser) return;
 
-  // Save logo to localStorage
-  const setLogoUrl = (url: string | null) => {
-    setLogoUrlState(url);
-    if (url) {
-      localStorage.setItem('bobolas-logo', url);
-    } else {
-      localStorage.removeItem('bobolas-logo');
-    }
-  };
+      // Only migrate if InstantDB has no employees yet
+      if (dbEmployees.length === 0) {
+        console.log('Migrating data from localStorage to InstantDB...');
 
-  // Save profile pic to localStorage
-  const setProfilePicUrl = (url: string | null) => {
-    setProfilePicUrlState(url);
-    if (url) {
-      localStorage.setItem('bobolas-profile-pic', url);
-    } else {
-      localStorage.removeItem('bobolas-profile-pic');
-    }
-  };
+        // Migrate employees
+        try {
+          await bulkCreateEmployees(initialEmployees);
+          console.log('Employees migrated successfully');
+        } catch (e) {
+          console.error('Failed to migrate employees:', e);
+        }
+
+        // Migrate logo
+        const savedLogo = localStorage.getItem('bobolas-logo');
+        if (savedLogo) {
+          await updateLogoUrl(savedLogo);
+        }
+
+        // Migrate default staffing template
+        const savedTemplate = localStorage.getItem('bobolas-default-staffing-template');
+        if (savedTemplate) {
+          await updateDefaultStaffingTemplate(JSON.parse(savedTemplate));
+        }
+
+        // Migrate permanent rules
+        const savedPermanentRules = localStorage.getItem('bobolas-permanent-rules');
+        const savedPermanentDisplay = localStorage.getItem('bobolas-permanent-display');
+        if (savedPermanentRules || savedPermanentDisplay) {
+          await updatePermanentRules(
+            savedPermanentRules ? JSON.parse(savedPermanentRules) : [],
+            savedPermanentDisplay ? JSON.parse(savedPermanentDisplay) : []
+          );
+        }
+
+        console.log('Migration complete!');
+      }
+
+      setHasMigrated(true);
+    };
+
+    migrateData();
+  }, [hasMigrated, employeesLoading, dbEmployees.length, authUser]);
   const DEFAULT_STAFFING_NEEDS: WeeklyStaffingNeeds = {
     tuesday: {
       slots: [
@@ -203,64 +228,38 @@ export default function Home() {
     },
   };
 
-  const [weeklyStaffingNeeds, setWeeklyStaffingNeedsState] = useState<Record<string, WeeklyStaffingNeeds>>({});
-
-  // Default staffing template - this is saved separately and used as template for new weeks
-  const [defaultStaffingTemplate, setDefaultStaffingTemplateState] = useState<WeeklyStaffingNeeds>(DEFAULT_STAFFING_NEEDS);
-
-  // Load staffing needs and default template from localStorage on mount
-  useEffect(() => {
-    try {
-      const savedStaffingNeeds = localStorage.getItem('bobolas-staffing-needs');
-      const savedDefaultTemplate = localStorage.getItem('bobolas-default-staffing-template');
-
-      if (savedStaffingNeeds) {
-        setWeeklyStaffingNeedsState(JSON.parse(savedStaffingNeeds));
-      }
-      if (savedDefaultTemplate) {
-        setDefaultStaffingTemplateState(JSON.parse(savedDefaultTemplate));
-      } else {
-        // Save the initial default template
-        localStorage.setItem('bobolas-default-staffing-template', JSON.stringify(DEFAULT_STAFFING_NEEDS));
-      }
-    } catch (e) {
-      console.error('Error loading staffing needs from localStorage:', e);
-    }
-  }, []);
+  // Staffing needs from InstantDB
+  const defaultStaffingTemplate = dbDefaultTemplate || DEFAULT_STAFFING_NEEDS;
+  const weeklyStaffingNeeds = dbStaffingByWeek;
 
   // Get staffing needs for current week or use default template
-  const staffingNeeds = weeklyStaffingNeeds[currentWeekKey] || defaultStaffingTemplate;
+  const staffingNeeds = dbStaffingByWeek[currentWeekKey] || defaultStaffingTemplate;
 
-  const setStaffingNeeds = (newNeeds: WeeklyStaffingNeeds) => {
-    const updatedNeeds = { ...weeklyStaffingNeeds, [currentWeekKey]: newNeeds };
-    setWeeklyStaffingNeedsState(updatedNeeds);
-    localStorage.setItem('bobolas-staffing-needs', JSON.stringify(updatedNeeds));
+  const setStaffingNeeds = async (newNeeds: WeeklyStaffingNeeds) => {
+    await updateWeeklyStaffing(currentWeekKey, newNeeds, notes);
   };
 
   // Save current week's staffing as the new default template
   const [showSavedDefaultMessage, setShowSavedDefaultMessage] = useState(false);
-  const saveAsDefaultTemplate = () => {
+  const saveAsDefaultTemplate = async () => {
     // Get the current staffing needs (either from this week's saved data or the current state)
-    const currentStaffing = weeklyStaffingNeeds[currentWeekKey] || staffingNeeds;
-    setDefaultStaffingTemplateState(currentStaffing);
-    localStorage.setItem('bobolas-default-staffing-template', JSON.stringify(currentStaffing));
+    const currentStaffing = dbStaffingByWeek[currentWeekKey] || staffingNeeds;
+    await updateDefaultStaffingTemplate(currentStaffing);
     // Show confirmation
     setShowSavedDefaultMessage(true);
     setTimeout(() => setShowSavedDefaultMessage(false), 2000);
   };
 
-  const handleUpdateEmployee = (updatedEmployee: Employee) => {
-    setEmployees(prev => prev.map(emp =>
-      emp.id === updatedEmployee.id ? updatedEmployee : emp
-    ));
+  const handleUpdateEmployee = async (updatedEmployee: Employee) => {
+    await updateEmployeeDB(updatedEmployee);
   };
 
-  const handleAddEmployee = (newEmployee: Employee) => {
-    setEmployees(prev => [...prev, newEmployee]);
+  const handleAddEmployee = async (newEmployee: Employee) => {
+    await createEmployee(newEmployee);
   };
 
-  const handleRemoveEmployee = (employeeId: string) => {
-    setEmployees(prev => prev.filter(emp => emp.id !== employeeId));
+  const handleRemoveEmployee = async (employeeId: string) => {
+    await deleteEmployee(employeeId);
     // Also remove any locked shifts for this employee
     setLockedShifts(prev => prev.filter(lock => lock.employeeId !== employeeId));
   };
