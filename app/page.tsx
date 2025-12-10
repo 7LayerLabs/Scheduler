@@ -126,41 +126,72 @@ export default function Home() {
   const [lockedShifts, setLockedShifts] = useState<LockedShift[]>([]);
   const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
-  // Logo from InstantDB with local state for optimistic updates
-  // Track if we're in the middle of an upload to prevent DB overwrites
-  const [localLogoUrl, setLocalLogoUrl] = useState<string | null>(null);
-  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  // Logo - use localStorage as primary storage (more reliable for large base64)
+  // Initialize from localStorage on mount
+  const [localLogoUrl, setLocalLogoUrl] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('bobolas-logo') || null;
+    }
+    return null;
+  });
 
-  // Use local state if uploading, otherwise use DB value
-  const logoUrl = isUploadingLogo ? localLogoUrl : (localLogoUrl ?? dbLogoUrl);
+  // The displayed logo - prefer local storage, fall back to DB
+  const logoUrl = localLogoUrl || dbLogoUrl;
 
-  // Sync local state with DB when dbLogoUrl changes (but not during upload)
+  // Sync from DB to localStorage if DB has a value and localStorage doesn't
   useEffect(() => {
-    if (!isUploadingLogo && dbLogoUrl) {
+    if (dbLogoUrl && !localLogoUrl && typeof window !== 'undefined') {
+      localStorage.setItem('bobolas-logo', dbLogoUrl);
       setLocalLogoUrl(dbLogoUrl);
     }
-  }, [dbLogoUrl, isUploadingLogo]);
+  }, [dbLogoUrl, localLogoUrl]);
+
+  // Helper to compress image before saving
+  const compressImage = (dataUrl: string, maxWidth: number = 200): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ratio = Math.min(maxWidth / img.width, maxWidth / img.height);
+        canvas.width = img.width * ratio;
+        canvas.height = img.height * ratio;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.onerror = () => resolve(dataUrl); // Fall back to original on error
+      img.src = dataUrl;
+    });
+  };
 
   const setLogoUrl = async (url: string | null) => {
-    console.log('setLogoUrl called with:', url ? `${url.substring(0, 50)}...` : 'null');
-    // Mark as uploading to prevent DB sync from overwriting
-    setIsUploadingLogo(true);
-    setLocalLogoUrl(url);
+    console.log('setLogoUrl called, size:', url ? `${(url.length / 1024).toFixed(1)}KB` : 'null');
 
-    try {
-      await updateLogoUrl(url);
-      console.log('Logo saved to DB successfully');
-      // Keep showing local URL until DB confirms
-      // The useEffect will sync when DB updates
-    } catch (error) {
-      console.error('Failed to save logo:', error);
-      // Revert on error
-      setLocalLogoUrl(dbLogoUrl);
-    } finally {
-      // Small delay to let DB sync complete before allowing overwrites
-      setTimeout(() => {
-        setIsUploadingLogo(false);
-      }, 1000);
+    if (url) {
+      // Compress the image for storage
+      const compressed = await compressImage(url);
+      console.log('Compressed size:', `${(compressed.length / 1024).toFixed(1)}KB`);
+
+      // Save to localStorage immediately (this is reliable)
+      localStorage.setItem('bobolas-logo', compressed);
+      setLocalLogoUrl(compressed);
+
+      // Also try to save to InstantDB (may fail for large images)
+      try {
+        await updateLogoUrl(compressed);
+        console.log('Logo also saved to InstantDB');
+      } catch (error) {
+        console.warn('Could not save to InstantDB (localStorage backup used):', error);
+      }
+    } else {
+      // Removing logo
+      localStorage.removeItem('bobolas-logo');
+      setLocalLogoUrl(null);
+      try {
+        await updateLogoUrl(null);
+      } catch (error) {
+        console.warn('Could not remove from InstantDB:', error);
+      }
     }
   };
 
