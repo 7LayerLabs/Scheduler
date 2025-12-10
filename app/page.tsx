@@ -41,14 +41,67 @@ export default function Home() {
   };
   const [lockedShifts, setLockedShifts] = useState<LockedShift[]>([]);
   const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
-  const [staffingNeeds, setStaffingNeeds] = useState<WeeklyStaffingNeeds>({
-    tuesday: { morning: 2, night: 2, morningStart: '07:15', morningEnd: '14:00', nightStart: '16:00', nightEnd: '21:00' },
-    wednesday: { morning: 2, night: 2, morningStart: '07:15', morningEnd: '14:00', nightStart: '16:00', nightEnd: '21:00' },
-    thursday: { morning: 2, night: 2, morningStart: '07:15', morningEnd: '14:00', nightStart: '16:00', nightEnd: '21:00' },
-    friday: { morning: 2, night: 3, morningStart: '07:15', morningEnd: '14:00', nightStart: '16:00', nightEnd: '21:00' },
-    saturday: { morning: 2, night: 3, morningStart: '07:15', morningEnd: '15:00', nightStart: '15:00', nightEnd: '21:00' },
-    sunday: { morning: 3, night: 0, morningStart: '07:15', morningEnd: '14:30' }, // Closed Sunday night
-  });
+  const DEFAULT_STAFFING_NEEDS: WeeklyStaffingNeeds = {
+    tuesday: {
+      slots: [
+        { id: 'tue-1', startTime: '07:15', endTime: '14:00', label: 'Opener' },
+        { id: 'tue-2', startTime: '11:00', endTime: '16:00', label: '2nd Server' },
+        { id: 'tue-3', startTime: '16:00', endTime: '21:00', label: 'Closer' },
+      ],
+      notes: ''
+    },
+    wednesday: {
+      slots: [
+        { id: 'wed-1', startTime: '07:15', endTime: '14:00', label: 'Opener' },
+        { id: 'wed-2', startTime: '11:00', endTime: '16:00', label: '2nd Server' },
+        { id: 'wed-3', startTime: '16:00', endTime: '21:00', label: 'Closer' },
+      ],
+      notes: ''
+    },
+    thursday: {
+      slots: [
+        { id: 'thu-1', startTime: '07:15', endTime: '14:00', label: 'Opener' },
+        { id: 'thu-2', startTime: '11:00', endTime: '16:00', label: '2nd Server' },
+        { id: 'thu-3', startTime: '16:00', endTime: '21:00', label: 'Closer' },
+      ],
+      notes: ''
+    },
+    friday: {
+      slots: [
+        { id: 'fri-1', startTime: '07:15', endTime: '14:00', label: 'Opener' },
+        { id: 'fri-2', startTime: '11:00', endTime: '16:00', label: '2nd Server' },
+        { id: 'fri-3', startTime: '15:00', endTime: '21:00', label: 'Dinner 1' },
+        { id: 'fri-4', startTime: '17:00', endTime: '21:00', label: 'Dinner 2' },
+      ],
+      notes: ''
+    },
+    saturday: {
+      slots: [
+        { id: 'sat-1', startTime: '07:15', endTime: '15:00', label: 'Opener' },
+        { id: 'sat-2', startTime: '10:00', endTime: '15:00', label: '2nd Server' },
+        { id: 'sat-3', startTime: '15:00', endTime: '21:00', label: 'Dinner 1' },
+        { id: 'sat-4', startTime: '17:00', endTime: '21:00', label: 'Dinner 2' },
+      ],
+      notes: ''
+    },
+    sunday: {
+      slots: [
+        { id: 'sun-1', startTime: '07:15', endTime: '14:30', label: 'Opener' },
+        { id: 'sun-2', startTime: '08:00', endTime: '14:30', label: '2nd Server' },
+        { id: 'sun-3', startTime: '09:00', endTime: '14:30', label: '3rd Server' },
+      ],
+      notes: ''
+    },
+  };
+
+  const [weeklyStaffingNeeds, setWeeklyStaffingNeeds] = useState<Record<string, WeeklyStaffingNeeds>>({});
+
+  // Get staffing needs for current week or use default
+  const staffingNeeds = weeklyStaffingNeeds[currentWeekKey] || DEFAULT_STAFFING_NEEDS;
+
+  const setStaffingNeeds = (newNeeds: WeeklyStaffingNeeds) => {
+    setWeeklyStaffingNeeds(prev => ({ ...prev, [currentWeekKey]: newNeeds }));
+  };
 
   const handleUpdateEmployee = (updatedEmployee: Employee) => {
     setEmployees(prev => prev.map(emp =>
@@ -79,7 +132,9 @@ export default function Home() {
         note: 'Locked shift',
       }));
       const allOverrides = [...overrides, ...lockedOverrides];
-      const newSchedule = generateSchedule(weekStart, allOverrides, employees, staffingNeeds);
+      // Pass locked shifts and existing assignments so they persist through regeneration
+      const existingAssignments = schedule?.assignments || [];
+      const newSchedule = generateSchedule(weekStart, allOverrides, employees, staffingNeeds, lockedShifts, existingAssignments);
       setSchedule(newSchedule);
       setIsGenerating(false);
     }, 500);
@@ -118,6 +173,11 @@ export default function Home() {
       coverage: schedule.conflicts.length === 0 ? 100 : Math.round((1 - schedule.conflicts.length / 12) * 100),
     };
   }, [schedule]);
+
+  const handleClearSchedule = () => {
+    setSchedule(null);
+    setLockedShifts([]);
+  };
 
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-slate-50 via-white to-orange-50/30">
@@ -166,6 +226,7 @@ export default function Home() {
               schedule={schedule}
               setSchedule={setSchedule}
               handleGenerate={handleGenerate}
+              onClearSchedule={handleClearSchedule}
               isGenerating={isGenerating}
               employees={employees}
               stats={stats}
@@ -181,6 +242,9 @@ export default function Home() {
 
           {activeTab === 'staffing' && (
             <StaffingView
+              weekStart={weekStart}
+              changeWeek={changeWeek}
+              formatWeekRange={formatWeekRange}
               staffingNeeds={staffingNeeds}
               setStaffingNeeds={setStaffingNeeds}
             />

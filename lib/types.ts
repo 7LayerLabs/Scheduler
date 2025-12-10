@@ -6,6 +6,12 @@ export interface Employee {
   bartendingScale: number; // 0-5
   aloneScale: number; // 0-5
   availability: Availability;
+  setSchedule?: {
+    day: DayOfWeek;
+    shiftType: 'morning' | 'night';
+    startTime?: string;
+    endTime?: string;
+  }[];
   exclusions: Exclusion[];
   preferences: Preferences;
   minShiftsPerWeek?: number;
@@ -55,12 +61,13 @@ export interface Preferences {
 export interface Shift {
   id: string;
   day: DayOfWeek;
-  name: string;
-  startTime: string;
-  endTime: string;
-  type: 'morning' | 'mid' | 'night';
-  staffNeeded: number;
-  requiresBartender: boolean;
+  type: 'morning' | 'night' | 'mid' | 'custom';
+  startTime: string; // HH:MM
+  endTime: string; // HH:MM
+  duration: number; // Hours
+  requiredStaff: number;
+  name?: string;
+  requiresBartender?: boolean;
 }
 
 export type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -69,17 +76,19 @@ export interface ScheduleAssignment {
   shiftId: string;
   employeeId: string;
   date: string; // YYYY-MM-DD
+  startTime?: string; // Specific start time for this assignment
+  endTime?: string;   // Specific end time for this assignment
 }
 
 export interface WeeklySchedule {
-  weekStartDate: string; // YYYY-MM-DD (Monday)
+  weekStart: Date;
   assignments: ScheduleAssignment[];
   conflicts: ScheduleConflict[];
   warnings: ScheduleWarning[];
 }
 
 export interface ScheduleConflict {
-  type: 'no_coverage' | 'no_bartender' | 'employee_unavailable' | 'alone_constraint';
+  type: 'no_coverage' | 'no_bartender' | 'employee_unavailable' | 'alone_constraint' | 'rule_violation';
   shiftId: string;
   date: string;
   message: string;
@@ -143,11 +152,23 @@ export interface WeeklyStaffingNeeds {
   sunday: DayStaffing;
 }
 
+export interface StaffingSlot {
+  id: string;
+  startTime: string;  // "07:15"
+  endTime: string;    // "14:00"
+  label?: string;     // "Opener", "2nd Server", etc.
+}
+
 export interface DayStaffing {
-  morning: number; // breakfast/lunch staff count
-  night: number;   // dinner staff count
-  morningStart?: string; // e.g., "07:15"
-  morningEnd?: string;   // e.g., "15:00"
-  nightStart?: string;   // e.g., "15:00"
-  nightEnd?: string;     // e.g., "21:00"
+  // New flexible system
+  slots: StaffingSlot[];  // Variable # of time slots
+  notes?: string;         // Free-form notes for scheduler
+
+  // Legacy fields for backward compatibility (deprecated)
+  morning?: number;
+  night?: number;
+  morningStart?: string;
+  morningEnd?: string;
+  nightStart?: string;
+  nightEnd?: string;
 }

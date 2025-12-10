@@ -30,7 +30,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
   const [editAvailability, setEditAvailability] = useState<Availability | null>(null);
 
   type DayKey = 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
-  type ShiftType = 'morning' | 'night' | 'any' | 'none';
+  type ShiftType = 'morning' | 'mid' | 'night' | 'any' | 'none';
 
   const dayLabels: { key: DayKey; label: string }[] = [
     { key: 'tuesday', label: 'Tue' },
@@ -94,35 +94,41 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
     }
   };
 
-  const getShiftTypeForDay = (day: DayKey): ShiftType => {
-    if (!editAvailability) return 'none';
+  const getShiftTypesForDay = (day: DayKey): ShiftType[] => {
+    if (!editAvailability) return [];
     const dayAvail = editAvailability[day] as DayAvailability | null;
-    if (!dayAvail || !dayAvail.available) return 'none';
-
-    // Check what shifts are available
-    const hasMorning = dayAvail.shifts.some(s => s.type === 'morning');
-    const hasNight = dayAvail.shifts.some(s => s.type === 'night');
-    const hasAny = dayAvail.shifts.some(s => s.type === 'any');
-
-    if (hasAny || (hasMorning && hasNight)) return 'any';
-    if (hasMorning) return 'morning';
-    if (hasNight) return 'night';
-    return 'any'; // Default if available but no specific shifts
+    if (!dayAvail || !dayAvail.available) return [];
+    return dayAvail.shifts.map(s => s.type as ShiftType);
   };
 
-  const setShiftTypeForDay = (day: DayKey, shiftType: ShiftType) => {
+  const hasShiftType = (day: DayKey, shiftType: ShiftType): boolean => {
+    const types = getShiftTypesForDay(day);
+    return types.includes(shiftType);
+  };
+
+  const toggleShiftTypeForDay = (day: DayKey, shiftType: ShiftType) => {
     if (!editAvailability) return;
 
     const newAvail = { ...editAvailability };
+    const currentDayAvail = editAvailability[day] as DayAvailability | null;
+    const currentShifts = currentDayAvail?.shifts || [];
 
-    if (shiftType === 'none') {
-      newAvail[day] = { available: false, shifts: [] };
+    const hasShift = currentShifts.some(s => s.type === shiftType);
+
+    let newShifts;
+    if (hasShift) {
+      // Remove this shift type
+      newShifts = currentShifts.filter(s => s.type !== shiftType);
     } else {
-      const shifts = shiftType === 'any'
-        ? [{ type: 'any' as const }]
-        : [{ type: shiftType as 'morning' | 'night' }];
-      newAvail[day] = { available: true, shifts };
+      // Add this shift type
+      newShifts = [...currentShifts, { type: shiftType as 'morning' | 'mid' | 'night' | 'any' }];
     }
+
+    newAvail[day] = {
+      available: newShifts.length > 0,
+      shifts: newShifts,
+      notes: currentDayAvail?.notes
+    };
 
     setEditAvailability(newAvail);
   };
@@ -263,11 +269,10 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                       setSelectedEmployee(emp);
                       setIsEditing(false);
                     }}
-                    className={`cursor-pointer transition-colors ${
-                      selectedEmployee?.id === emp.id
-                        ? 'bg-blue-50'
-                        : 'hover:bg-gray-50'
-                    }`}
+                    className={`cursor-pointer transition-colors ${selectedEmployee?.id === emp.id
+                      ? 'bg-blue-50'
+                      : 'hover:bg-gray-50'
+                      }`}
                   >
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
@@ -294,11 +299,10 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                       <span className="text-sm text-gray-900">{emp.minShiftsPerWeek || '—'}</span>
                     </td>
                     <td className="py-3 px-4 text-right">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        emp.exclusions.length > 0
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'bg-green-100 text-green-800'
-                      }`}>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${emp.exclusions.length > 0
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-green-100 text-green-800'
+                        }`}>
                         {emp.exclusions.length > 0 ? 'Has exclusions' : 'Available'}
                       </span>
                     </td>
@@ -439,41 +443,38 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
               {!isEditing && (
                 <div className="mb-6">
                   <h4 className="text-sm font-medium text-gray-900 mb-3">Weekly Availability</h4>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-2">
                     {dayLabels.map(({ key, label }) => {
                       const dayAvail = selectedEmployee.availability[key] as DayAvailability | null;
-                      const isAvailable = dayAvail && dayAvail.available;
+                      const shifts = dayAvail?.shifts || [];
+                      const isSunday = key === 'sunday';
 
-                      let shiftLabel = 'Off';
-                      let colorClasses = 'bg-gray-100 text-gray-400 border-gray-200';
-
-                      if (isAvailable && dayAvail.shifts) {
-                        const hasMorning = dayAvail.shifts.some(s => s.type === 'morning');
-                        const hasNight = dayAvail.shifts.some(s => s.type === 'night');
-                        const hasAny = dayAvail.shifts.some(s => s.type === 'any');
-
-                        if (hasAny || (hasMorning && hasNight)) {
-                          shiftLabel = 'Both';
-                          colorClasses = 'bg-green-50 text-green-700 border-green-200';
-                        } else if (hasMorning) {
-                          shiftLabel = 'AM';
-                          colorClasses = 'bg-amber-50 text-amber-700 border-amber-200';
-                        } else if (hasNight) {
-                          shiftLabel = 'PM';
-                          colorClasses = 'bg-indigo-50 text-indigo-700 border-indigo-200';
-                        } else {
-                          shiftLabel = 'Both';
-                          colorClasses = 'bg-green-50 text-green-700 border-green-200';
-                        }
-                      }
+                      const shiftOptions: { label: string; type: 'any' | 'morning' | 'mid' | 'night' }[] = [
+                        { label: 'Open', type: 'any' },
+                        { label: 'Morning', type: 'morning' },
+                        { label: 'Mid', type: 'mid' },
+                        ...(isSunday ? [] : [{ label: 'Dinner', type: 'night' as const }])
+                      ];
 
                       return (
-                        <div
-                          key={key}
-                          className={`p-2 rounded-lg text-center text-xs font-medium border ${colorClasses}`}
-                        >
-                          <div className="font-semibold">{label}</div>
-                          <div className="text-[10px] opacity-75">{shiftLabel}</div>
+                        <div key={key} className="flex items-center gap-2">
+                          <span className="w-10 text-xs font-medium text-gray-600">{label}</span>
+                          <div className="flex gap-1">
+                            {shiftOptions.map(({ label: shiftLabel, type }) => {
+                              const isSelected = shifts.some(s => s.type === type);
+                              return (
+                                <span
+                                  key={type}
+                                  className={`px-2 py-1 text-xs rounded-md font-medium ${isSelected
+                                      ? 'bg-blue-500 text-white'
+                                      : 'bg-slate-100 text-slate-400'
+                                    }`}
+                                >
+                                  {shiftLabel}
+                                </span>
+                              );
+                            })}
+                          </div>
                         </div>
                       );
                     })}
@@ -487,61 +488,40 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                   <h4 className="text-sm font-medium text-gray-900 mb-3">Weekly Availability</h4>
                   <div className="space-y-2">
                     {dayLabels.map(({ key, label }) => {
-                      const shiftType = getShiftTypeForDay(key);
+                      const isSunday = key === 'sunday';
+
+                      const shiftOptions: { label: string; type: 'any' | 'morning' | 'mid' | 'night' }[] = [
+                        { label: 'Open', type: 'any' },
+                        { label: 'Morning', type: 'morning' },
+                        { label: 'Mid', type: 'mid' },
+                        ...(isSunday ? [] : [{ label: 'Dinner', type: 'night' as const }])
+                      ];
+
                       return (
                         <div key={key} className="flex items-center gap-2">
                           <span className="w-10 text-xs font-medium text-gray-600">{label}</span>
-                          <div className="flex-1 flex gap-1">
-                            <button
-                              type="button"
-                              onClick={() => setShiftTypeForDay(key, 'none')}
-                              className={`flex-1 px-2 py-1.5 text-xs rounded transition-colors ${
-                                shiftType === 'none'
-                                  ? 'bg-gray-600 text-white'
-                                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                              }`}
-                            >
-                              Off
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setShiftTypeForDay(key, 'morning')}
-                              className={`flex-1 px-2 py-1.5 text-xs rounded transition-colors ${
-                                shiftType === 'morning'
-                                  ? 'bg-amber-500 text-white'
-                                  : 'bg-amber-50 text-amber-600 hover:bg-amber-100'
-                              }`}
-                            >
-                              AM
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setShiftTypeForDay(key, 'night')}
-                              className={`flex-1 px-2 py-1.5 text-xs rounded transition-colors ${
-                                shiftType === 'night'
-                                  ? 'bg-indigo-500 text-white'
-                                  : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
-                              }`}
-                            >
-                              PM
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setShiftTypeForDay(key, 'any')}
-                              className={`flex-1 px-2 py-1.5 text-xs rounded transition-colors ${
-                                shiftType === 'any'
-                                  ? 'bg-green-500 text-white'
-                                  : 'bg-green-50 text-green-600 hover:bg-green-100'
-                              }`}
-                            >
-                              Both
-                            </button>
+                          <div className="flex gap-1">
+                            {shiftOptions.map(({ label: shiftLabel, type }) => {
+                              const isSelected = hasShiftType(key, type);
+                              return (
+                                <button
+                                  key={type}
+                                  type="button"
+                                  onClick={() => toggleShiftTypeForDay(key, type)}
+                                  className={`px-2 py-1 text-xs rounded-md font-medium transition-colors ${isSelected
+                                      ? 'bg-blue-500 text-white'
+                                      : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                    }`}
+                                >
+                                  {shiftLabel}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       );
                     })}
                   </div>
-                  <p className="text-xs text-gray-400 mt-2">AM = Morning, PM = Night, Both = Any shift</p>
                 </div>
               )}
 

@@ -16,6 +16,7 @@ interface Props {
   schedule: WeeklySchedule | null;
   setSchedule: (schedule: WeeklySchedule | null) => void;
   handleGenerate: () => void;
+  onClearSchedule: () => void;
   isGenerating: boolean;
   employees: Employee[];
   stats: {
@@ -40,6 +41,7 @@ export default function ScheduleView({
   schedule,
   setSchedule,
   handleGenerate,
+  onClearSchedule,
   isGenerating,
   employees,
   stats,
@@ -51,6 +53,7 @@ export default function ScheduleView({
   staffingNeeds,
 }: Props) {
   const [parsedPreview, setParsedPreview] = useState<string[]>([]);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Parse notes as user types
   useEffect(() => {
@@ -77,17 +80,46 @@ export default function ScheduleView({
         <div className="flex items-center gap-3">
           {schedule && (
             <button
-              onClick={() => {
-                if (confirm('Are you sure you want to clear the entire schedule?')) {
-                  setSchedule(null);
-                  setLockedShifts([]);
-                }
-              }}
+              onClick={() => setShowClearConfirm(true)}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 text-sm font-semibold rounded-xl transition-all duration-200 border border-red-200 hover:border-red-300 hover:shadow-md hover:shadow-red-100"
             >
               <TrashIcon className="w-4 h-4" />
               Clear Schedule
             </button>
+          )}
+
+          {/* Clear Confirmation Modal */}
+          {showClearConfirm && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+              <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4 transform transition-all scale-100">
+                <div className="flex items-center gap-3 mb-4 text-red-600">
+                  <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                    <TrashIcon className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-800">Clear Schedule?</h3>
+                </div>
+                <p className="text-slate-600 mb-6">
+                  Are you sure you want to clear the entire schedule? This action cannot be undone.
+                </p>
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={() => setShowClearConfirm(false)}
+                    className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      onClearSchedule();
+                      setShowClearConfirm(false);
+                    }}
+                    className="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 shadow-lg shadow-red-500/30 transition-all"
+                  >
+                    Yes, Clear It
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
           <button
             onClick={handleGenerate}
@@ -161,13 +193,12 @@ export default function ScheduleView({
                 {parsedPreview.map((text, idx) => (
                   <span
                     key={idx}
-                    className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold shadow-sm ${
-                      text.startsWith('✓')
-                        ? 'bg-gradient-to-r from-emerald-50 to-green-50 text-emerald-700 border border-emerald-200'
-                        : text.startsWith('✗')
+                    className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold shadow-sm ${text.startsWith('✓')
+                      ? 'bg-gradient-to-r from-emerald-50 to-green-50 text-emerald-700 border border-emerald-200'
+                      : text.startsWith('✗')
                         ? 'bg-gradient-to-r from-red-50 to-rose-50 text-red-700 border border-red-200'
                         : 'bg-gradient-to-r from-amber-50 to-orange-50 text-amber-700 border border-amber-200'
-                    }`}
+                      }`}
                   >
                     {text}
                   </span>
@@ -183,89 +214,90 @@ export default function ScheduleView({
         {/* Schedule Content */}
         <div className="p-6">
           {schedule ? (
-              <ScheduleGrid
-                schedule={schedule}
-                weekStart={weekStart}
-                lockedShifts={lockedShifts}
-                employees={employees}
-                staffingNeeds={staffingNeeds}
-                overrides={parseScheduleNotes(notes, employees)}
-                onToggleLock={(employeeId, day, shiftType) => {
-                  const exists = lockedShifts.find(
-                    l => l.employeeId === employeeId && l.day === day && l.shiftType === shiftType
-                  );
-                  if (exists) {
-                    setLockedShifts(lockedShifts.filter(
-                      l => !(l.employeeId === employeeId && l.day === day && l.shiftType === shiftType)
-                    ));
+            <ScheduleGrid
+              schedule={schedule}
+              weekStart={weekStart}
+              lockedShifts={lockedShifts}
+              employees={employees}
+              staffingNeeds={staffingNeeds}
+              overrides={parseScheduleNotes(notes, employees)}
+              onToggleLock={(employeeId, day, shiftType) => {
+                const exists = lockedShifts.find(
+                  l => l.employeeId === employeeId && l.day === day && l.shiftType === shiftType
+                );
+                if (exists) {
+                  setLockedShifts(lockedShifts.filter(
+                    l => !(l.employeeId === employeeId && l.day === day && l.shiftType === shiftType)
+                  ));
+                } else {
+                  setLockedShifts([...lockedShifts, { employeeId, day, shiftType }]);
+                }
+              }}
+              onSwapAssignments={(sourceEmpId, sourceDay, sourceShift, targetEmpId, targetDay, targetShift) => {
+                // True swap: exchange the two employees between their slots
+                const dayPrefixes: Record<string, string> = {
+                  tuesday: 'tue', wednesday: 'wed', thursday: 'thu',
+                  friday: 'fri', saturday: 'sat', sunday: 'sun'
+                };
+                const sourcePrefix = dayPrefixes[sourceDay];
+                const targetPrefix = dayPrefixes[targetDay];
+
+                const matchesSlot = (shiftId: string, prefix: string, shiftType: string) => {
+                  const id = shiftId.toLowerCase();
+                  const matchesDay = id.includes(prefix + '-') || id.startsWith(prefix);
+                  let matchesShift = false;
+                  if (shiftType === 'morning') {
+                    matchesShift = (id.includes('early') || id.includes('morning')) && !id.includes('night');
+                  } else if (shiftType === 'night') {
+                    matchesShift = id.includes('night');
                   } else {
-                    setLockedShifts([...lockedShifts, { employeeId, day, shiftType }]);
+                    matchesShift = id.includes(shiftType);
                   }
-                }}
-                onSwapAssignments={(sourceEmpId, sourceDay, sourceShift, targetEmpId, targetDay, targetShift) => {
-                  // True swap: exchange the two employees between their slots
-                  const dayPrefixes: Record<string, string> = {
-                    tuesday: 'tue', wednesday: 'wed', thursday: 'thu',
-                    friday: 'fri', saturday: 'sat', sunday: 'sun'
-                  };
-                  const sourcePrefix = dayPrefixes[sourceDay];
-                  const targetPrefix = dayPrefixes[targetDay];
+                  return matchesDay && matchesShift;
+                };
 
-                  const matchesSlot = (shiftId: string, prefix: string, shiftType: string) => {
-                    const id = shiftId.toLowerCase();
-                    const matchesDay = id.includes(prefix + '-') || id.startsWith(prefix);
-                    let matchesShift = false;
-                    if (shiftType === 'morning') {
-                      matchesShift = (id.includes('early') || id.includes('morning')) && !id.includes('night');
-                    } else if (shiftType === 'night') {
-                      matchesShift = id.includes('night');
-                    } else {
-                      matchesShift = id.includes(shiftType);
-                    }
-                    return matchesDay && matchesShift;
-                  };
+                // Find the source assignment (the one being dragged)
+                const sourceAssignmentIndex = schedule.assignments.findIndex(a =>
+                  a.employeeId === sourceEmpId && matchesSlot(a.shiftId, sourcePrefix, sourceShift)
+                );
 
-                  // Find the source assignment (the one being dragged)
-                  const sourceAssignmentIndex = schedule.assignments.findIndex(a =>
-                    a.employeeId === sourceEmpId && matchesSlot(a.shiftId, sourcePrefix, sourceShift)
-                  );
+                // Find the target assignment (the one being dropped on)
+                const targetAssignmentIndex = schedule.assignments.findIndex(a =>
+                  a.employeeId === targetEmpId && matchesSlot(a.shiftId, targetPrefix, targetShift)
+                );
 
-                  // Find the target assignment (the one being dropped on)
-                  const targetAssignmentIndex = schedule.assignments.findIndex(a =>
-                    a.employeeId === targetEmpId && matchesSlot(a.shiftId, targetPrefix, targetShift)
-                  );
+                if (sourceAssignmentIndex === -1 || targetAssignmentIndex === -1) return;
 
-                  if (sourceAssignmentIndex === -1 || targetAssignmentIndex === -1) return;
+                // Create new assignments array with swapped employees
+                const newAssignments = [...schedule.assignments];
 
-                  // Create new assignments array with swapped employees
-                  const newAssignments = [...schedule.assignments];
+                // Swap the shiftIds between the two assignments (keep employees, swap their slots)
+                const sourceShiftId = newAssignments[sourceAssignmentIndex].shiftId;
+                const sourceDate = newAssignments[sourceAssignmentIndex].date;
+                const targetShiftId = newAssignments[targetAssignmentIndex].shiftId;
+                const targetDate = newAssignments[targetAssignmentIndex].date;
 
-                  // Swap the shiftIds between the two assignments (keep employees, swap their slots)
-                  const sourceShiftId = newAssignments[sourceAssignmentIndex].shiftId;
-                  const sourceDate = newAssignments[sourceAssignmentIndex].date;
-                  const targetShiftId = newAssignments[targetAssignmentIndex].shiftId;
-                  const targetDate = newAssignments[targetAssignmentIndex].date;
+                // Source employee gets target's shift
+                newAssignments[sourceAssignmentIndex] = {
+                  ...newAssignments[sourceAssignmentIndex],
+                  shiftId: targetShiftId,
+                  date: targetDate
+                };
 
-                  // Source employee gets target's shift
-                  newAssignments[sourceAssignmentIndex] = {
-                    ...newAssignments[sourceAssignmentIndex],
-                    shiftId: targetShiftId,
-                    date: targetDate
-                  };
+                // Target employee gets source's shift
+                newAssignments[targetAssignmentIndex] = {
+                  ...newAssignments[targetAssignmentIndex],
+                  shiftId: sourceShiftId,
+                  date: sourceDate
+                };
 
-                  // Target employee gets source's shift
-                  newAssignments[targetAssignmentIndex] = {
-                    ...newAssignments[targetAssignmentIndex],
-                    shiftId: sourceShiftId,
-                    date: sourceDate
-                  };
-
-                  setSchedule({
-                    ...schedule,
-                    assignments: newAssignments
-                  });
-                }}
-              />
+                setSchedule({
+                  ...schedule,
+                  assignments: newAssignments
+                });
+              }}
+              onUpdateSchedule={setSchedule}
+            />
           ) : (
             <EmptyState onGenerate={handleGenerate} />
           )}
@@ -283,7 +315,11 @@ export default function ScheduleView({
                   <AlertIcon className="w-4 h-4 text-red-600" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-red-800">Coverage Gap</p>
+                  <p className="text-sm font-medium text-red-800">
+                    {conflict.type === 'rule_violation' ? 'Rule Violation' :
+                      conflict.type === 'no_bartender' ? 'Missing Bartender' :
+                        'Coverage Gap'}
+                  </p>
                   <p className="text-sm text-red-600">{conflict.message}</p>
                 </div>
               </div>
@@ -442,6 +478,7 @@ function ScheduleGrid({
   staffingNeeds,
   overrides,
   onSwapAssignments,
+  onUpdateSchedule,
 }: {
   schedule: WeeklySchedule;
   weekStart: Date;
@@ -454,33 +491,23 @@ function ScheduleGrid({
     sourceEmpId: string, sourceDay: DayOfWeek, sourceShift: 'morning' | 'night',
     targetEmpId: string, targetDay: DayOfWeek, targetShift: 'morning' | 'night'
   ) => void;
+  onUpdateSchedule?: (schedule: WeeklySchedule) => void;
 }) {
-  // Build a map of custom times from overrides
-  const customTimes: CustomTimeMap = {};
-  for (const override of overrides) {
-    if (override.type === 'custom_time' && (override.customStartTime || override.customEndTime)) {
-      const key = `${override.employeeId}-${override.day}`;
-      customTimes[key] = {
-        start: override.customStartTime || '',
-        end: override.customEndTime || '',
-      };
-    }
-  }
   const [draggedItem, setDraggedItem] = useState<{
     employeeId: string;
     day: DayOfWeek;
     shiftType: 'morning' | 'night';
+    assignmentIndex: number;
   } | null>(null);
   const [dropTarget, setDropTarget] = useState<{
     employeeId: string;
     day: DayOfWeek;
-    shiftType: 'morning' | 'night';
   } | null>(null);
 
-  const days = ['Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const shifts = ['morning', 'night'] as const;
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   const dayToFull: Record<string, DayOfWeek> = {
+    Mon: 'monday',
     Tue: 'tuesday',
     Wed: 'wednesday',
     Thu: 'thursday',
@@ -489,269 +516,225 @@ function ScheduleGrid({
     Sun: 'sunday',
   };
 
-  const isLocked = (employeeId: string, day: string, shiftType: 'morning' | 'night') => {
-    return lockedShifts.some(
-      l => l.employeeId === employeeId && l.day === dayToFull[day] && l.shiftType === shiftType
-    );
-  };
-
   const getDateForDay = (dayIndex: number) => {
     const date = new Date(weekStart);
-    date.setDate(date.getDate() + dayIndex + 1);
+    date.setDate(date.getDate() + dayIndex);
     return date.getDate();
   };
 
-  const getAssignmentsForSlot = (day: string, shiftType: string) => {
-    const dayMap: Record<string, string[]> = {
-      Tue: ['tue'],
-      Wed: ['wed'],
-      Thu: ['thu'],
-      Fri: ['fri'],
-      Sat: ['sat'],
-      Sun: ['sun'],
+  const getDateStringForDay = (day: DayOfWeek) => {
+    const dayOffsets: Record<DayOfWeek, number> = {
+      monday: 0, tuesday: 1, wednesday: 2, thursday: 3, friday: 4, saturday: 5, sunday: 6
     };
+    const date = new Date(weekStart);
+    date.setDate(date.getDate() + dayOffsets[day]);
+    return date.toISOString().split('T')[0];
+  };
 
-    return schedule.assignments.filter((a) => {
-      const dayPrefixes = dayMap[day];
-      const shiftId = a.shiftId.toLowerCase();
+  const getAssignmentForEmployeeDay = (employeeId: string, day: string) => {
+    const dayFull = dayToFull[day];
+    const assignments = schedule.assignments.filter(a =>
+      a.employeeId === employeeId &&
+      a.date === getDateStringForDay(dayFull)
+    );
+    return assignments;
+  };
 
-      const isCorrectDay = dayPrefixes.some(prefix => {
-        if (shiftId.startsWith(prefix + '-')) return true;
-        if ((day === 'Wed' || day === 'Thu') && shiftId.startsWith('tue-thu')) {
-          return false;
-        }
-        return shiftId.includes(prefix);
-      });
+  const getShiftType = (shiftId: string): 'morning' | 'night' => {
+    if (shiftId.includes('night')) return 'night';
+    return 'morning';
+  };
 
-      // Check shift type - be careful with 'early-night' which contains 'early'
-      let isCorrectShift = false;
-      if (shiftType === 'morning') {
-        // Morning matches: 'early', 'morning' - but NOT if it also contains 'night'
-        const isMorningShift = (shiftId.includes('early') || shiftId.includes('morning')) && !shiftId.includes('night');
-        isCorrectShift = isMorningShift;
-      } else if (shiftType === 'night') {
-        // Night matches: 'night', 'early-night'
-        isCorrectShift = shiftId.includes('night');
-      } else {
-        isCorrectShift = shiftId.includes(shiftType);
-      }
+  const isLocked = (employeeId: string, day: DayOfWeek, shiftType: 'morning' | 'night') => {
+    return lockedShifts.some(
+      l => l.employeeId === employeeId && l.day === day && l.shiftType === shiftType
+    );
+  };
 
-      return isCorrectDay && isCorrectShift;
+  const handleDragStart = (e: React.DragEvent, employeeId: string, day: DayOfWeek, shiftType: 'morning' | 'night', assignmentIndex: number) => {
+    if (isLocked(employeeId, day, shiftType)) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggedItem({ employeeId, day, shiftType, assignmentIndex });
+  };
+
+  const handleDragOver = (e: React.DragEvent, employeeId: string, day: DayOfWeek) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDropTarget({ employeeId, day });
+  };
+
+  const handleDragLeave = () => {
+    setDropTarget(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetEmployeeId: string, targetDay: DayOfWeek) => {
+    e.preventDefault();
+    if (!draggedItem || !onUpdateSchedule) return;
+
+    const targetDayFull = targetDay;
+    const sourceDayFull = draggedItem.day;
+
+    // Find the source assignment
+    const sourceAssignmentIdx = schedule.assignments.findIndex(a =>
+      a.employeeId === draggedItem.employeeId &&
+      a.date === getDateStringForDay(sourceDayFull) &&
+      getShiftType(a.shiftId) === draggedItem.shiftType
+    );
+
+    if (sourceAssignmentIdx === -1) {
+      setDraggedItem(null);
+      setDropTarget(null);
+      return;
+    }
+
+    const sourceAssignment = schedule.assignments[sourceAssignmentIdx];
+    const newAssignments = [...schedule.assignments];
+
+    // Check if the target cell already has an assignment
+    const targetAssignmentIdx = newAssignments.findIndex(a =>
+      a.employeeId === targetEmployeeId &&
+      a.date === getDateStringForDay(targetDayFull)
+    );
+
+    if (targetAssignmentIdx !== -1) {
+      // Swap: move target to source location
+      const targetAssignment = newAssignments[targetAssignmentIdx];
+
+      // Update target assignment to source location
+      newAssignments[targetAssignmentIdx] = {
+        ...targetAssignment,
+        employeeId: draggedItem.employeeId,
+        date: sourceAssignment.date,
+        shiftId: sourceAssignment.shiftId.replace(draggedItem.day.slice(0, 3), targetDay.toLowerCase().slice(0, 3)),
+      };
+
+      // Update source assignment to target location
+      newAssignments[sourceAssignmentIdx] = {
+        ...sourceAssignment,
+        employeeId: targetEmployeeId,
+        date: getDateStringForDay(targetDayFull),
+        shiftId: targetAssignment.shiftId,
+      };
+    } else {
+      // Move: just update the source assignment to the new location
+      newAssignments[sourceAssignmentIdx] = {
+        ...sourceAssignment,
+        employeeId: targetEmployeeId,
+        date: getDateStringForDay(targetDayFull),
+      };
+    }
+
+    onUpdateSchedule({
+      ...schedule,
+      assignments: newAssignments
     });
+
+    setDraggedItem(null);
+    setDropTarget(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedItem(null);
+    setDropTarget(null);
   };
 
   return (
     <div className="overflow-x-auto">
-      {/* Day Headers */}
-      <div className="grid grid-cols-7 gap-3 mb-4">
-        <div className="col-span-1"></div>
-        {days.map((day, idx) => (
-          <div key={day} className="text-center">
-            <div className="text-xs font-medium text-gray-500 uppercase">{day}</div>
-            <div className="text-xl font-semibold text-gray-900">{getDateForDay(idx)}</div>
-          </div>
-        ))}
-      </div>
+      <table className="w-full border-collapse">
+        <thead>
+          <tr>
+            <th className="p-2 border-b-2 border-slate-200 bg-slate-50 text-left min-w-[150px]">Employee</th>
+            {days.map((day, idx) => (
+              <th key={day} className="p-2 border-b-2 border-slate-200 bg-slate-50 min-w-[120px]">
+                <div className="text-xs font-medium text-gray-500 uppercase">{day}</div>
+                <div className="text-lg font-semibold text-gray-900">{getDateForDay(idx)}</div>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {employees.map(emp => (
+            <tr key={emp.id} className="border-b border-slate-100 hover:bg-slate-50/50">
+              <td className="p-3 font-medium text-slate-700 bg-white sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                {emp.name}
+              </td>
+              {days.map(day => {
+                const dayFull = dayToFull[day];
+                const assignments = getAssignmentForEmployeeDay(emp.id, day);
+                const isClosed = day === 'Mon';
+                const isDropping = dropTarget?.employeeId === emp.id && dropTarget?.day === dayFull;
 
-      {/* Shifts */}
-      {shifts.map((shift) => {
-        // Get time range from first day's staffing needs as representative
-        const firstDayNeeds = staffingNeeds.tuesday;
-        let timeRange = '';
-        if (shift === 'morning') {
-          const start = firstDayNeeds.morningStart || '07:15';
-          const end = firstDayNeeds.morningEnd || '14:00';
-          timeRange = `${formatTime(start)} - ${formatTime(end)}`;
-        } else {
-          const start = firstDayNeeds.nightStart || '16:00';
-          const end = firstDayNeeds.nightEnd || '21:00';
-          timeRange = `${formatTime(start)} - ${formatTime(end)}`;
-        }
-
-        return (
-        <div key={shift} className="mb-6">
-          {/* Shift Header */}
-          <div className="flex items-center gap-2 mb-3">
-            <div className={`w-2 h-2 rounded-full ${shift === 'morning' ? 'bg-amber-400' : 'bg-indigo-400'}`} />
-            <span className="text-sm font-medium text-gray-700 capitalize">{shift}</span>
-            <span className="text-xs text-gray-400">
-              {timeRange}
-            </span>
-          </div>
-
-          {/* Day Cells */}
-          <div className="grid grid-cols-7 gap-3">
-            <div className="col-span-1"></div>
-            {days.map((day) => {
-              const assignments = getAssignmentsForSlot(day, shift);
-              const isSundayNight = day === 'Sun' && shift === 'night';
-
-              if (isSundayNight) {
                 return (
-                  <div key={day} className="min-h-[80px] bg-gray-50 rounded-lg flex items-center justify-center">
-                    <span className="text-xs text-gray-400">Closed</span>
-                  </div>
-                );
-              }
+                  <td
+                    key={day}
+                    className={`p-2 border-l border-slate-100 text-center relative group transition-all ${isDropping ? 'bg-blue-50 ring-2 ring-blue-400 ring-inset' : ''
+                      }`}
+                    onDragOver={(e) => handleDragOver(e, emp.id, dayFull)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, emp.id, dayFull)}
+                  >
+                    {assignments.length > 0 ? (
+                      <div className="space-y-1">
+                        {assignments.map((a, i) => {
+                          const shiftType = getShiftType(a.shiftId);
+                          const locked = isLocked(emp.id, dayFull, shiftType);
+                          const isDragging = draggedItem?.employeeId === emp.id && draggedItem?.day === dayFull;
 
-              return (
-                <div
-                  key={day}
-                  className={`min-h-[80px] rounded-lg p-2 ${
-                    assignments.length === 0
-                      ? 'bg-red-50 border-2 border-dashed border-red-200'
-                      : 'bg-gray-50'
-                  }`}
-                >
-                  {assignments.length === 0 ? (
-                    <div className="h-full flex items-center justify-center">
-                      <span className="text-xs text-red-400 font-medium">Open</span>
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {assignments.map((a) => {
-                        const emp = employees.find((e) => e.id === a.employeeId);
-                        if (!emp) return null;
+                          return (
+                            <div
+                              key={i}
+                              draggable={!locked}
+                              onDragStart={(e) => handleDragStart(e, emp.id, dayFull, shiftType, i)}
+                              onDragEnd={handleDragEnd}
+                              className={`relative text-sm py-1 px-2 rounded-md font-medium cursor-grab active:cursor-grabbing transition-all ${locked ? 'ring-2 ring-amber-400' : ''
+                                } ${isDragging ? 'opacity-50 scale-95' : ''
+                                } ${shiftType === 'night' ? 'bg-indigo-100 text-indigo-700' :
+                                  a.shiftId.includes('mid') ? 'bg-purple-100 text-purple-700' :
+                                    'bg-amber-100 text-amber-700'
+                                }`}
+                            >
+                              {a.startTime && a.endTime ? (
+                                <span>{formatTime(a.startTime)} - {formatTime(a.endTime)}</span>
+                              ) : (
+                                <span>{shiftType === 'night' ? 'Night' : 'Morning'}</span>
+                              )}
 
-                        const isBartender = emp.bartendingScale >= 4;
-
-                        // Check for custom time override first
-                        const customTimeKey = `${emp.id}-${dayToFull[day]}`;
-                        const customTime = customTimes[customTimeKey];
-                        let timeStr = '';
-                        if (customTime) {
-                          const startStr = customTime.start ? formatTime(customTime.start) : '';
-                          const endStr = customTime.end ? formatTime(customTime.end) : '';
-                          timeStr = `${startStr}-${endStr}`;
-                        } else {
-                          const times = getEmployeeShiftTimes(emp, day, shift);
-                          timeStr = times.start && times.end ? `${times.start}-${times.end}` : '';
-                        }
-                        const locked = isLocked(emp.id, day, shift);
-
-                        const isDragging = draggedItem?.employeeId === emp.id &&
-                          draggedItem?.day === dayToFull[day] &&
-                          draggedItem?.shiftType === shift;
-                        const isDropTarget = dropTarget?.employeeId === emp.id &&
-                          dropTarget?.day === dayToFull[day] &&
-                          dropTarget?.shiftType === shift;
-
-                        return (
-                          <div
-                            key={a.employeeId}
-                            draggable={!locked}
-                            onDragStart={(e) => {
-                              if (locked) {
-                                e.preventDefault();
-                                return;
-                              }
-                              setDraggedItem({
-                                employeeId: emp.id,
-                                day: dayToFull[day],
-                                shiftType: shift
-                              });
-                              e.dataTransfer.effectAllowed = 'move';
-                            }}
-                            onDragEnd={() => {
-                              setDraggedItem(null);
-                              setDropTarget(null);
-                            }}
-                            onDragOver={(e) => {
-                              e.preventDefault();
-                              if (draggedItem && (
-                                draggedItem.employeeId !== emp.id ||
-                                draggedItem.day !== dayToFull[day] ||
-                                draggedItem.shiftType !== shift
-                              )) {
-                                setDropTarget({
-                                  employeeId: emp.id,
-                                  day: dayToFull[day],
-                                  shiftType: shift
-                                });
-                              }
-                            }}
-                            onDragLeave={() => {
-                              setDropTarget(null);
-                            }}
-                            onDrop={(e) => {
-                              e.preventDefault();
-                              if (draggedItem && !locked) {
-                                onSwapAssignments(
-                                  draggedItem.employeeId,
-                                  draggedItem.day,
-                                  draggedItem.shiftType,
-                                  emp.id,
-                                  dayToFull[day],
-                                  shift
-                                );
-                              }
-                              setDraggedItem(null);
-                              setDropTarget(null);
-                            }}
-                            className={`rounded-md px-2 py-1.5 relative group cursor-grab active:cursor-grabbing transition-all ${
-                              isDragging
-                                ? 'opacity-50 scale-95'
-                                : isDropTarget
-                                ? 'ring-2 ring-blue-400 ring-offset-1 scale-105'
-                                : ''
-                            } ${
-                              locked
-                                ? 'bg-amber-50 border-l-2 border-amber-500 ring-1 ring-amber-300 cursor-not-allowed'
-                                : isBartender
-                                ? 'bg-blue-100 border-l-2 border-blue-500 hover:shadow-md'
-                                : 'bg-white border-l-2 border-gray-300 hover:shadow-md'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-1">
-                              <div className="flex items-center gap-1">
-                                {!locked && (
-                                  <GripIcon className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                )}
-                                <span className={`text-xs font-medium ${
-                                  locked ? 'text-amber-800' : isBartender ? 'text-blue-800' : 'text-gray-800'
-                                }`}>
-                                  {emp.name}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                {isBartender && (
-                                  <span className="text-[10px] bg-blue-500 text-white px-1 rounded">Bar</span>
-                                )}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onToggleLock(emp.id, dayToFull[day], shift);
-                                  }}
-                                  className={`p-0.5 rounded transition-all ${
-                                    locked
-                                      ? 'text-amber-600 hover:text-amber-700'
-                                      : 'text-gray-300 hover:text-gray-500 opacity-0 group-hover:opacity-100'
+                              {/* Lock Toggle Button */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onToggleLock(emp.id, dayFull, shiftType);
+                                }}
+                                className={`absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-xs transition-all ${locked
+                                  ? 'bg-amber-500 text-white shadow-md'
+                                  : 'bg-slate-200 text-slate-500 opacity-0 group-hover:opacity-100 hover:bg-slate-300'
                                   }`}
-                                  title={locked ? 'Unlock shift' : 'Lock shift'}
-                                >
-                                  {locked ? (
-                                    <LockClosedIcon className="w-3 h-3" />
-                                  ) : (
-                                    <LockOpenIcon className="w-3 h-3" />
-                                  )}
-                                </button>
-                              </div>
+                                title={locked ? 'Unlock shift' : 'Lock shift'}
+                              >
+                                {locked ? '🔒' : '🔓'}
+                              </button>
                             </div>
-                            {timeStr && (
-                              <div className="text-[10px] text-gray-500 mt-0.5">{timeStr}</div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        );
-      })}
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div
+                        className={`h-8 flex items-center justify-center text-slate-300 text-sm rounded-md transition-all ${isDropping ? 'bg-blue-100 text-blue-500 border-2 border-dashed border-blue-300' : ''
+                          }`}
+                      >
+                        {isClosed ? 'CLOSED' : isDropping ? 'Drop here' : 'OFF'}
+                      </div>
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -821,13 +804,12 @@ Examples:
               {parsedPreview.map((text, idx) => (
                 <div
                   key={idx}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium ${
-                    text.startsWith('✓')
-                      ? 'bg-green-50 text-green-700 border border-green-200'
-                      : text.startsWith('✗')
+                  className={`px-3 py-2 rounded-lg text-sm font-medium ${text.startsWith('✓')
+                    ? 'bg-green-50 text-green-700 border border-green-200'
+                    : text.startsWith('✗')
                       ? 'bg-red-50 text-red-700 border border-red-200'
                       : 'bg-blue-50 text-blue-700 border border-blue-200'
-                  }`}
+                    }`}
                 >
                   {text}
                 </div>
@@ -850,10 +832,9 @@ Examples:
   );
 }
 
-// Staffing Needs Editor Component
+// Staffing Needs Editor Component (Simplified for slots view)
 function StaffingNeedsEditor({
   staffingNeeds,
-  setStaffingNeeds,
 }: {
   staffingNeeds: WeeklyStaffingNeeds;
   setStaffingNeeds: (needs: WeeklyStaffingNeeds) => void;
@@ -867,89 +848,32 @@ function StaffingNeedsEditor({
     { key: 'sunday', label: 'Sun', fullLabel: 'Sunday' },
   ];
 
-  const updateStaffing = (day: keyof WeeklyStaffingNeeds, shift: 'morning' | 'night', value: number) => {
-    const newNeeds = { ...staffingNeeds };
-    newNeeds[day] = { ...newNeeds[day], [shift]: Math.max(0, Math.min(10, value)) };
-    setStaffingNeeds(newNeeds);
+  const getTotalSlots = () => {
+    return Object.values(staffingNeeds).reduce((sum, day) => sum + (day.slots?.length || 0), 0);
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Weekly Staffing Needs</h3>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Weekly Staffing Slots</h3>
         <p className="text-sm text-gray-500 mb-4">
-          Set how many staff you need for each shift this week. The scheduler will try to fill these positions.
+          View time slots for each day. Use the <span className="font-medium">Staffing</span> tab to edit slots and add notes.
         </p>
       </div>
 
-      {/* Grid Header */}
-      <div className="grid grid-cols-7 gap-4">
-        <div className="col-span-1"></div>
-        {days.map(({ label, fullLabel }) => (
-          <div key={label} className="text-center">
-            <span className="text-sm font-medium text-gray-700">{fullLabel}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Morning/Breakfast/Lunch Row */}
-      <div className="grid grid-cols-7 gap-4 items-center">
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-amber-400" />
-          <span className="text-sm font-medium text-gray-700">Breakfast/Lunch</span>
-        </div>
-        {days.map(({ key, label }) => (
-          <div key={`morning-${label}`} className="flex justify-center">
-            <div className="flex items-center gap-1 bg-amber-50 rounded-lg p-1">
-              <button
-                onClick={() => updateStaffing(key, 'morning', staffingNeeds[key].morning - 1)}
-                className="w-8 h-8 rounded-lg bg-white border border-amber-200 text-amber-600 hover:bg-amber-100 transition-colors flex items-center justify-center font-bold"
-              >
-                −
-              </button>
-              <span className="w-8 text-center font-semibold text-amber-800">
-                {staffingNeeds[key].morning}
-              </span>
-              <button
-                onClick={() => updateStaffing(key, 'morning', staffingNeeds[key].morning + 1)}
-                className="w-8 h-8 rounded-lg bg-white border border-amber-200 text-amber-600 hover:bg-amber-100 transition-colors flex items-center justify-center font-bold"
-              >
-                +
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Night/Dinner Row */}
-      <div className="grid grid-cols-7 gap-4 items-center">
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-indigo-400" />
-          <span className="text-sm font-medium text-gray-700">Dinner</span>
-        </div>
+      {/* Slots Summary Grid */}
+      <div className="grid grid-cols-6 gap-3">
         {days.map(({ key, label }) => {
-          const isSundayNight = key === 'sunday';
+          const slots = staffingNeeds[key]?.slots || [];
+          const notes = staffingNeeds[key]?.notes;
           return (
-            <div key={`night-${label}`} className="flex justify-center">
-              {isSundayNight ? (
-                <div className="text-xs text-gray-400 italic">Closed</div>
-              ) : (
-                <div className="flex items-center gap-1 bg-indigo-50 rounded-lg p-1">
-                  <button
-                    onClick={() => updateStaffing(key, 'night', staffingNeeds[key].night - 1)}
-                    className="w-8 h-8 rounded-lg bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-100 transition-colors flex items-center justify-center font-bold"
-                  >
-                    −
-                  </button>
-                  <span className="w-8 text-center font-semibold text-indigo-800">
-                    {staffingNeeds[key].night}
-                  </span>
-                  <button
-                    onClick={() => updateStaffing(key, 'night', staffingNeeds[key].night + 1)}
-                    className="w-8 h-8 rounded-lg bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-100 transition-colors flex items-center justify-center font-bold"
-                  >
-                    +
-                  </button>
+            <div key={key} className="bg-slate-50 rounded-lg p-3 text-center border border-slate-200">
+              <div className="text-xs font-medium text-slate-500 mb-1">{label}</div>
+              <div className="text-xl font-bold text-slate-800">{slots.length}</div>
+              <div className="text-xs text-slate-400">slot{slots.length !== 1 ? 's' : ''}</div>
+              {notes && (
+                <div className="mt-1 text-xs text-amber-600" title={notes}>
+                  📝
                 </div>
               )}
             </div>
@@ -958,29 +882,15 @@ function StaffingNeedsEditor({
       </div>
 
       {/* Summary */}
-      <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+      <div className="p-4 bg-gray-50 rounded-lg">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-700">Weekly Total</span>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-amber-700">
-              <span className="font-semibold">
-                {Object.values(staffingNeeds).reduce((sum, day) => sum + day.morning, 0)}
-              </span> morning shifts
-            </span>
-            <span className="text-sm text-indigo-700">
-              <span className="font-semibold">
-                {Object.values(staffingNeeds).reduce((sum, day) => sum + day.night, 0)}
-              </span> evening shifts
-            </span>
-            <span className="text-sm text-gray-900 font-semibold">
-              {Object.values(staffingNeeds).reduce((sum, day) => sum + day.morning + day.night, 0)} total
-            </span>
-          </div>
+          <span className="text-sm font-medium text-gray-700">Total Slots</span>
+          <span className="text-sm text-gray-900 font-semibold">{getTotalSlots()} time slots</span>
         </div>
       </div>
 
       <p className="text-xs text-gray-500">
-        Changes take effect when you regenerate the schedule.
+        Go to the Staffing tab to configure individual time slots and add scheduling notes.
       </p>
     </div>
   );

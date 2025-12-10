@@ -10,7 +10,7 @@ import {
   ScheduleOverride,
   WeeklyStaffingNeeds
 } from './types';
-import { getShiftsForDay, staffingRequirements } from './shifts';
+
 
 // Helper functions (moved from employees.ts to avoid circular dependency)
 function isBartender(employee: Employee): boolean {
@@ -184,214 +184,253 @@ export function generateSchedule(
   weekStartDate: Date,
   overrides: ScheduleOverride[] = [],
   employees: Employee[] = [],
-  staffingNeeds?: WeeklyStaffingNeeds
+  staffingNeeds?: WeeklyStaffingNeeds,
+  lockedShifts?: { employeeId: string; day: DayOfWeek; shiftType: 'morning' | 'night' }[],
+  existingAssignments?: ScheduleAssignment[]
 ): WeeklySchedule {
   const weekStart = getWeekStart(weekStartDate);
+  // 1. Process overrides and set schedules to create initial assignments
   const assignments: ScheduleAssignment[] = [];
   const conflicts: ScheduleConflict[] = [];
   const warnings: ScheduleWarning[] = [];
-  const employeeHours: EmployeeHours = {};
-  const employeeShifts: EmployeeShifts = {};
+  const employeeShifts: Record<string, number> = {};
+  const employeeHours: Record<string, number> = {};
 
-  // Initialize hours tracking
-  for (const emp of employees) {
-    employeeHours[emp.id] = 0;
+  // Initialize counts
+  employees.forEach(emp => {
     employeeShifts[emp.id] = 0;
+    employeeHours[emp.id] = 0;
+  });
+
+  // Helper to determine shift type from start time
+  const determineShiftType = (time: string): 'morning' | 'night' => {
+    const hour = parseInt(time.split(':')[0]);
+    return hour < 16 ? 'morning' : 'night';
+  };
+
+  // Helper to calculate duration from time strings (HH:MM)
+  const getShiftDuration = (start: string, end: string): number => {
+    const [startH, startM] = start.split(':').map(Number);
+    const [endH, endM] = end.split(':').map(Number);
+    let duration = (endH + endM / 60) - (startH + startM / 60);
+    if (duration < 0) duration += 24;
+    return duration;
+  };
+
+  // Helper to add assignment and update counts
+  const addAssignment = (assignment: ScheduleAssignment, shift: { id: string; startTime: string; endTime: string; duration: number; }) => {
+    // Check if assignment already exists
+    const exists = assignments.some(a =>
+      a.employeeId === assignment.employeeId &&
+      a.date === assignment.date &&
+      a.shiftId === assignment.shiftId
+    );
+
+    if (!exists) {
+      assignments.push(assignment);
+      employeeShifts[assignment.employeeId] = (employeeShifts[assignment.employeeId] || 0) + 1;
+      employeeHours[assignment.employeeId] = (employeeHours[assignment.employeeId] || 0) + shift.duration;
+    }
+  };
+
+  // 0. Pre-populate locked shifts from existing assignments (HIGHEST PRIORITY)
+  // These are shifts that the user has manually locked and should NOT be changed during regeneration
+  if (lockedShifts && existingAssignments) {
+    const dayOffsets: Record<DayOfWeek, number> = {
+      monday: 0, tuesday: 1, wednesday: 2, thursday: 3, friday: 4, saturday: 5, sunday: 6
+    };
+
+    lockedShifts.forEach(lock => {
+      // Find the existing assignment that matches this lock
+      const lockDate = new Date(weekStart);
+      lockDate.setDate(lockDate.getDate() + dayOffsets[lock.day]);
+      const lockDateStr = lockDate.toISOString().split('T')[0];
+
+      const existingAssignment = existingAssignments.find(a =>
+        a.employeeId === lock.employeeId &&
+        a.date === lockDateStr &&
+        (lock.shiftType === 'night' ? a.shiftId.includes('night') : !a.shiftId.includes('night'))
+      );
+
+      if (existingAssignment) {
+        // Add the locked assignment directly
+        assignments.push({ ...existingAssignment });
+
+        // Estimate duration from the assignment if available, otherwise use defaults
+        const duration = existingAssignment.startTime && existingAssignment.endTime
+          ? getShiftDuration(existingAssignment.startTime, existingAssignment.endTime)
+          : (lock.shiftType === 'morning' ? 6 : 5);
+
+        employeeShifts[existingAssignment.employeeId] = (employeeShifts[existingAssignment.employeeId] || 0) + 1;
+        employeeHours[existingAssignment.employeeId] = (employeeHours[existingAssignment.employeeId] || 0) + duration;
+      }
+    });
   }
 
+  // 1a. Process Set Schedules (Highest Priority)
+  employees.forEach(emp => {
+    if (emp.setSchedule) {
+      emp.setSchedule.forEach(setShift => {
+        const dayIndex = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].indexOf(setShift.day);
+        if (dayIndex === -1) return;
+
+        const date = new Date(weekStart);
+        date.setDate(date.getDate() + dayIndex);
+        const dateStr = date.toISOString().split('T')[0];
+
+        // Find matching shift definition to get duration/id
+        const dayStaffing = staffingNeeds ? staffingNeeds[setShift.day as keyof WeeklyStaffingNeeds] : undefined;
+        const shiftId = `${setShift.day}-${setShift.shiftType}`;
+
+        // Create a synthetic shift object for the assignment
+        const shift: { id: string; startTime: string; endTime: string; duration: number; } = {
+          id: shiftId,
+          startTime: setShift.startTime || (setShift.shiftType === 'morning' ? dayStaffing?.morningStart : dayStaffing?.nightStart) || '09:00',
+          endTime: setShift.endTime || (setShift.shiftType === 'morning' ? dayStaffing?.morningEnd : dayStaffing?.nightEnd) || '17:00',
+          duration: 8, // Approximate, will be calculated from times if needed
+        };
+
+        // Calculate duration if times are present
+        if (shift.startTime && shift.endTime) {
+          shift.duration = getShiftDuration(shift.startTime, shift.endTime);
+        }
+
+        addAssignment({
+          shiftId: shift.id,
+          employeeId: emp.id,
+          date: dateStr,
+          startTime: shift.startTime, // Pass specific times if set
+          endTime: shift.endTime
+        }, shift);
+      });
+    }
+  });
+
+  // 1b. Process Overrides (High Priority)
+  // The original override processing was per day. We need to adapt it to the new structure.
+  // Custom time overrides are processed first as they create specific shifts.
+  // Assign and exclude overrides will be used later in the assignShift function.
+
   // Process each day
-  const days: DayOfWeek[] = ['tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+  const days: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']; // Include Monday for set schedules
 
   for (const day of days) {
-    const date = getDateForDay(weekStart, day);
-    const dayShifts = getShiftsForDay(day);
-
-    // Get overrides for this day
+    const dateStr = getDateForDay(weekStart, day);
     const dayOverrides = overrides.filter(o => o.day === day);
-    const assignOverrides = dayOverrides.filter(o => o.type === 'assign');
-    const excludeOverrides = dayOverrides.filter(o => o.type === 'exclude');
-    const prioritizeOverrides = dayOverrides.filter(o => o.type === 'prioritize');
-    const customTimeOverrides = dayOverrides.filter(o => o.type === 'custom_time');
+
+    // Get shifts for this day based on staffing needs (new slots format)
+    const shifts: Shift[] = [];
+    if (staffingNeeds) {
+      const needs = staffingNeeds[day as keyof WeeklyStaffingNeeds];
+      if (needs && needs.slots && needs.slots.length > 0) {
+        // Use the new slots array
+        for (const slot of needs.slots) {
+          const startHour = parseInt(slot.startTime.split(':')[0]);
+          let shiftType: 'morning' | 'mid' | 'night' = 'mid';
+          if (startHour < 12) shiftType = 'morning';
+          else if (startHour >= 15) shiftType = 'night';
+
+          shifts.push({
+            id: slot.id || `${day}-${slot.startTime}`,
+            day,
+            type: shiftType,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            duration: getShiftDuration(slot.startTime, slot.endTime),
+            requiredStaff: 1, // Each slot is one person
+            name: slot.label || 'Shift',
+            requiresBartender: shiftType === 'night',
+          });
+        }
+      } else if (needs && (needs.morning || needs.night)) {
+        // Fallback to legacy format for backward compatibility
+        if (needs.morning && needs.morning > 0) {
+          shifts.push({
+            id: `${day}-morning`,
+            day,
+            type: 'morning',
+            startTime: needs.morningStart || '07:15',
+            endTime: needs.morningEnd || '14:00',
+            duration: getShiftDuration(needs.morningStart || '07:15', needs.morningEnd || '14:00'),
+            requiredStaff: needs.morning,
+            name: 'Morning Shift',
+            requiresBartender: false,
+          });
+        }
+        if (needs.night && needs.night > 0) {
+          shifts.push({
+            id: `${day}-night`,
+            day,
+            type: 'night',
+            startTime: needs.nightStart || '16:00',
+            endTime: needs.nightEnd || '21:00',
+            duration: getShiftDuration(needs.nightStart || '16:00', needs.nightEnd || '21:00'),
+            requiredStaff: needs.night,
+            name: 'Night Shift',
+            requiresBartender: true,
+          });
+        }
+      }
+    } else {
+      // Fallback to default shifts if no staffing needs provided
+      if (day !== 'sunday') { // Sunday night closed
+        shifts.push({ id: `${day}-morning`, day, type: 'morning', startTime: '09:00', endTime: '17:00', duration: 8, requiredStaff: 2, name: 'Morning Shift', requiresBartender: false });
+        shifts.push({ id: `${day}-night`, day, type: 'night', startTime: '17:00', endTime: '23:00', duration: 6, requiredStaff: 2, name: 'Night Shift', requiresBartender: true });
+      } else {
+        shifts.push({ id: `${day}-morning`, day, type: 'morning', startTime: '09:00', endTime: '17:00', duration: 8, requiredStaff: 2, name: 'Morning Shift', requiresBartender: false });
+      }
+    }
 
     // Handle custom time assignments first - these create special individual shifts
+    const customTimeOverrides = dayOverrides.filter(o => o.type === 'custom_time');
     for (const customTime of customTimeOverrides) {
       const emp = employees.find(e => e.id === customTime.employeeId);
       if (!emp) continue;
 
-      // Determine which shift this falls into based on times
-      const defaultMorningEnd = staffingNeeds ? staffingNeeds[day as keyof WeeklyStaffingNeeds]?.morningEnd || '14:00' : '14:00';
-      const startTime = customTime.customStartTime || '07:15';
-      const endTime = customTime.customEndTime || '21:00';
+      // Create a synthetic shift for this custom time
+      const shiftId = `custom-${customTime.id}`;
+      const startTime = customTime.customStartTime || '09:00';
+      const endTime = customTime.customEndTime || '17:00';
 
-      // Decide if this is a morning or night shift based on times
-      const startHour = parseInt(startTime.split(':')[0]);
-      const endHour = parseInt(endTime.split(':')[0]);
-      const morningEndHour = parseInt(defaultMorningEnd.split(':')[0]);
-
-      let shiftType: 'morning' | 'night' = 'morning';
-      if (startHour >= 14 || (startHour >= 12 && endHour >= 17)) {
-        shiftType = 'night';
-      }
-
-      // Create the custom shift ID
-      const customShiftId = `${day.slice(0, 3)}-custom-${emp.id}-${shiftType}`;
-
-      // Check if already assigned today
-      const alreadyAssignedToday = assignments.some(a => a.date === date && a.employeeId === emp.id);
-      if (alreadyAssignedToday) continue;
-
-      // Add the assignment
-      assignments.push({
-        shiftId: customShiftId,
-        employeeId: emp.id,
-        date,
-      });
-
-      // Track hours
-      const duration = getShiftDuration(startTime, endTime);
-      employeeHours[emp.id] = (employeeHours[emp.id] || 0) + duration;
-      employeeShifts[emp.id] = (employeeShifts[emp.id] || 0) + 1;
-    }
-
-    // Group shifts by type to avoid double-scheduling
-    const morningShifts = dayShifts.filter(s => s.type === 'morning');
-    const midShifts = dayShifts.filter(s => s.type === 'mid');
-    const nightShifts = dayShifts.filter(s => s.type === 'night');
-
-    // Get staffing config for this day
-    const dayStaffing = staffingNeeds ? staffingNeeds[day as keyof WeeklyStaffingNeeds] : null;
-
-    // Assign morning slots
-    if (morningShifts.length > 0) {
-      const mainMorning = morningShifts[0];
-
-      // Use staffingNeeds if provided, otherwise fall back to shift default
-      const morningStaffNeeded = dayStaffing
-        ? dayStaffing.morning
-        : mainMorning.staffNeeded;
-
-      // Use custom times from staffingNeeds if available
-      const morningStartTime = dayStaffing?.morningStart || mainMorning.startTime;
-      const morningEndTime = dayStaffing?.morningEnd || mainMorning.endTime;
-
-      // Create a shift with custom times
-      const customMorningShift = {
-        ...mainMorning,
-        staffNeeded: morningStaffNeeded,
-        startTime: morningStartTime,
-        endTime: morningEndTime,
+      const shift: Shift = {
+        id: shiftId,
+        day,
+        type: determineShiftType(startTime),
+        startTime,
+        endTime,
+        duration: getShiftDuration(startTime, endTime),
+        requiredStaff: 1,
+        name: 'Custom Shift',
+        requiresBartender: false
       };
 
-      // Get forced assignments for morning
-      const morningAssigns = assignOverrides.filter(o => o.shiftType === 'morning' || o.shiftType === 'any');
-      const morningExcludes = excludeOverrides.map(o => o.employeeId);
-      const morningPrioritize = prioritizeOverrides.filter(o => o.shiftType === 'morning' || o.shiftType === 'any').map(o => o.employeeId);
-
-      const assigned = assignShift(
-        customMorningShift,
-        date,
-        day,
+      assignShift(
+        shift,
+        dateStr,
         employees,
+        assignments,
         employeeHours,
         employeeShifts,
-        assignments,
-        morningAssigns.map(o => o.employeeId),
-        morningExcludes,
-        morningPrioritize
+        dayOverrides,
+        conflicts,
+        warnings
       );
-
-      if (assigned.length < morningStaffNeeded) {
-        conflicts.push({
-          type: 'no_coverage',
-          shiftId: mainMorning.id,
-          date,
-          message: `Need ${morningStaffNeeded} staff for ${mainMorning.name} on ${day}, only found ${assigned.length}`,
-        });
-      }
-
-      // Check bartender requirement
-      const hasBartender = assigned.some(id => {
-        const emp = employees.find(e => e.id === id);
-        return emp && isBartender(emp);
-      });
-      if (!hasBartender && mainMorning.requiresBartender) {
-        conflicts.push({
-          type: 'no_bartender',
-          shiftId: mainMorning.id,
-          date,
-          message: `No bartender assigned to ${mainMorning.name} on ${day}`,
-        });
-      }
     }
 
-    // Assign night slots
-    if (nightShifts.length > 0) {
-      const mainNight = nightShifts[0];
-
-      // Use staffingNeeds if provided, otherwise fall back to shift default
-      // Skip night shift if staffingNeeds says 0 (e.g., Sunday night when closed)
-      const nightStaffNeeded = dayStaffing
-        ? dayStaffing.night
-        : mainNight.staffNeeded;
-
-      // Use custom times from staffingNeeds if available
-      const nightStartTime = dayStaffing?.nightStart || mainNight.startTime;
-      const nightEndTime = dayStaffing?.nightEnd || mainNight.endTime;
-
-      // Create a shift with custom times
-      const customNightShift = {
-        ...mainNight,
-        staffNeeded: nightStaffNeeded,
-        startTime: nightStartTime,
-        endTime: nightEndTime,
-      };
-
-      // Skip if no night staff needed (e.g., closed)
-      if (nightStaffNeeded === 0) {
-        // Don't assign anyone, no conflict
-      } else {
-        // Get forced assignments for night
-        const nightAssigns = assignOverrides.filter(o => o.shiftType === 'night' || o.shiftType === 'any');
-        const nightExcludes = excludeOverrides.map(o => o.employeeId);
-        const nightPrioritize = prioritizeOverrides.filter(o => o.shiftType === 'night' || o.shiftType === 'any').map(o => o.employeeId);
-
-        const assigned = assignShift(
-          customNightShift,
-          date,
-          day,
-          employees,
-          employeeHours,
-          employeeShifts,
-          assignments,
-          nightAssigns.map(o => o.employeeId),
-          nightExcludes,
-          nightPrioritize
-        );
-
-        if (assigned.length < nightStaffNeeded) {
-          conflicts.push({
-            type: 'no_coverage',
-            shiftId: mainNight.id,
-            date,
-            message: `Need ${nightStaffNeeded} staff for ${mainNight.name} on ${day}, only found ${assigned.length}`,
-          });
-        }
-
-        // Check bartender requirement
-        const hasBartender = assigned.some(id => {
-          const emp = employees.find(e => e.id === id);
-          return emp && isBartender(emp);
-        });
-        if (!hasBartender && mainNight.requiresBartender) {
-          conflicts.push({
-            type: 'no_bartender',
-            shiftId: mainNight.id,
-            date,
-            message: `No bartender assigned to ${mainNight.name} on ${day}`,
-          });
-        }
-      }
+    for (const shift of shifts) {
+      assignShift(
+        shift,
+        dateStr,
+        employees,
+        assignments,
+        employeeHours,
+        employeeShifts,
+        dayOverrides,
+        conflicts,
+        warnings
+      );
     }
+
   }
 
   // Check for employees not getting enough shifts
@@ -415,153 +454,139 @@ export function generateSchedule(
     }
   }
 
+  // Verify that all overrides were respected
+  for (const override of overrides) {
+    const emp = employees.find(e => e.id === override.employeeId);
+    if (!emp) continue;
+
+    const dayDate = getDateForDay(weekStart, override.day);
+    const empAssignments = assignments.filter(a => a.employeeId === emp.id && a.date === dayDate);
+
+    if (override.type === 'exclude') {
+      if (empAssignments.length > 0) {
+        conflicts.push({
+          type: 'rule_violation',
+          shiftId: 'override-check',
+          date: dayDate,
+          message: `Rule violation: ${emp.name} was scheduled on ${override.day} despite "off" rule`,
+        });
+      }
+    } else if (override.type === 'assign' || override.type === 'custom_time') {
+      if (empAssignments.length === 0) {
+        conflicts.push({
+          type: 'rule_violation',
+          shiftId: 'override-check',
+          date: dayDate,
+          message: `Rule violation: ${emp.name} was NOT scheduled on ${override.day} despite assignment rule`,
+        });
+      } else if (override.shiftType !== 'any' && override.type === 'assign') {
+        // Check if shift type matches
+        const hasMatchingShift = empAssignments.some(a => {
+          if (override.shiftType === 'morning') return a.shiftId.includes('morning') || a.shiftId.includes('early');
+          if (override.shiftType === 'night') return a.shiftId.includes('night');
+          return false;
+        });
+
+        if (!hasMatchingShift) {
+          conflicts.push({
+            type: 'rule_violation',
+            shiftId: 'override-check',
+            date: dayDate,
+            message: `Rule violation: ${emp.name} assigned to wrong shift type on ${override.day}`,
+          });
+        }
+      }
+    }
+  }
   return {
-    weekStartDate: formatDate(weekStart),
+    weekStart,
     assignments,
     conflicts,
     warnings,
   };
 }
 
+// Helper to assign employees to a shift
 function assignShift(
   shift: Shift,
   date: string,
-  day: DayOfWeek,
-  allEmployees: Employee[],
-  hours: EmployeeHours,
-  shifts: EmployeeShifts,
+  employees: Employee[],
   assignments: ScheduleAssignment[],
-  forceAssign: string[] = [],
-  forceExclude: string[] = [],
-  prioritize: string[] = []
-): string[] {
-  const assigned: string[] = [];
-  const shiftDuration = getShiftDuration(shift.startTime, shift.endTime);
+  employeeHours: Record<string, number>,
+  employeeShiftCounts: Record<string, number>,
+  overrides: ScheduleOverride[],
+  conflicts: ScheduleConflict[],
+  warnings: ScheduleWarning[]
+) {
+  // Check if shift is already filled
+  const currentAssignments = assignments.filter(a => a.shiftId === shift.id && a.date === date);
+  if (currentAssignments.length >= shift.requiredStaff) return;
 
-  // Already assigned to ANY shift on this day (prevent same person morning AND night)
-  const alreadyAssignedToday = assignments
-    .filter(a => a.date === date)
-    .map(a => a.employeeId);
+  // Get available employees
+  const availableEmployees = employees.filter(emp => {
+    // Check if already assigned today
+    if (assignments.some(a => a.employeeId === emp.id && a.date === date)) return false;
 
-  // Already assigned to this day/shift type specifically
-  const alreadyAssigned = assignments
-    .filter(a => a.date === date && a.shiftId.includes(shift.type))
-    .map(a => a.employeeId);
+    // Check if excluded
+    const isExcluded = overrides.some(o =>
+      o.type === 'exclude' &&
+      o.employeeId === emp.id &&
+      (o.shiftType === 'any' || o.shiftType === shift.type)
+    );
+    if (isExcluded) return false;
 
-  // STEP 0: Handle forced assignments first
-  for (const empId of forceAssign) {
-    if (alreadyAssigned.includes(empId)) continue;
-    if (alreadyAssignedToday.includes(empId)) continue; // Don't double-book even for forced
-    const emp = allEmployees.find(e => e.id === empId);
-    if (!emp) continue;
+    // Check availability
+    const dayKey = shift.day as keyof typeof emp.availability;
+    const dayAvail = emp.availability[dayKey];
+    if (!dayAvail || !dayAvail.available) return false;
 
-    assigned.push(emp.id);
-    hours[emp.id] += shiftDuration;
-    shifts[emp.id]++;
+    // Check if shift type matches availability
+    const shiftMatch = dayAvail.shifts.some(s =>
+      s.type === 'any' || s.type === shift.type
+    );
+
+    return shiftMatch;
+  });
+
+  // Sort by priority (overrides first, then fewer hours/shifts)
+  availableEmployees.sort((a, b) => {
+    const aPriority = overrides.some(o => o.type === 'prioritize' && o.employeeId === a.id) ? 1 : 0;
+    const bPriority = overrides.some(o => o.type === 'prioritize' && o.employeeId === b.id) ? 1 : 0;
+
+    if (aPriority !== bPriority) return bPriority - aPriority;
+
+    // Then by hours
+    return (employeeHours[a.id] || 0) - (employeeHours[b.id] || 0);
+  });
+
+  // Assign needed staff
+  const needed = shift.requiredStaff - currentAssignments.length;
+  for (let i = 0; i < needed && i < availableEmployees.length; i++) {
+    const emp = availableEmployees[i];
+
+    // Check if forced assignment exists for someone else
+    const forcedAssignments = overrides.filter(o =>
+      o.type === 'assign' &&
+      (o.shiftType === 'any' || o.shiftType === shift.type)
+    );
+
+    // If there are forced assignments, only pick those employees
+    if (forcedAssignments.length > 0) {
+      const isForced = forcedAssignments.some(o => o.employeeId === emp.id);
+      if (!isForced && currentAssignments.length + i < forcedAssignments.length) continue;
+    }
+
     assignments.push({
       shiftId: shift.id,
       employeeId: emp.id,
       date,
+      startTime: shift.startTime,
+      endTime: shift.endTime
     });
+
+    employeeHours[emp.id] = (employeeHours[emp.id] || 0) + shift.duration;
+    employeeShiftCounts[emp.id] = (employeeShiftCounts[emp.id] || 0) + 1;
   }
-
-  // Get available employees (excluding forced exclusions)
-  const available = allEmployees.filter(emp => {
-    if (alreadyAssigned.includes(emp.id)) return false;
-    if (alreadyAssignedToday.includes(emp.id)) return false; // Already working another shift today
-    if (assigned.includes(emp.id)) return false; // Already force-assigned
-    if (forceExclude.includes(emp.id)) return false; // Force excluded
-    return isEmployeeAvailable(emp, day, date, shift.type, shift.startTime);
-  });
-
-  // Separate bartenders and non-bartenders who need bartender coverage
-  const bartenders = available.filter(emp => isBartender(emp));
-  const needsBartenderSupport = available.filter(emp => emp.preferences.needsBartenderOnShift);
-
-  // Score all available employees (boost prioritized ones)
-  const scored = available.map(emp => ({
-    employee: emp,
-    score: scoreEmployee(emp, shift.type, hours, shifts, shift.requiresBartender) +
-           (prioritize.includes(emp.id) ? 50 : 0), // Big boost for prioritized
-  })).sort((a, b) => b.score - a.score);
-
-  // Check if we already have a bartender from forced assignments
-  let hasBartender = assigned.some(id => {
-    const emp = allEmployees.find(e => e.id === id);
-    return emp && isBartender(emp);
-  });
-
-  // STEP 1: Assign a bartender if shift requires one and we don't have one
-  if (shift.requiresBartender && !hasBartender && bartenders.length > 0) {
-    // Prefer prioritized bartenders
-    const prioritizedBartenders = bartenders.filter(emp => prioritize.includes(emp.id));
-    const bartenderPool = prioritizedBartenders.length > 0 ? prioritizedBartenders : bartenders;
-
-    const scoredBartenders = bartenderPool.map(emp => ({
-      employee: emp,
-      score: scoreEmployee(emp, shift.type, hours, shifts, true),
-    })).sort((a, b) => b.score - a.score);
-
-    const bestBartender = scoredBartenders[0].employee;
-    assigned.push(bestBartender.id);
-    hasBartender = true;
-    hours[bestBartender.id] += shiftDuration;
-    shifts[bestBartender.id]++;
-    assignments.push({
-      shiftId: shift.id,
-      employeeId: bestBartender.id,
-      date,
-    });
-  }
-
-  // STEP 2: Now that we have a bartender, prioritize employees who NEED bartender support
-  // (like Christian) if they want more shifts
-  if (hasBartender) {
-    const eligibleNeedSupport = needsBartenderSupport.filter(emp =>
-      !assigned.includes(emp.id)
-    );
-
-    const scoredNeedSupport = eligibleNeedSupport.map(emp => ({
-      employee: emp,
-      score: scoreEmployee(emp, shift.type, hours, shifts, false),
-    })).sort((a, b) => b.score - a.score);
-
-    for (const { employee } of scoredNeedSupport) {
-      if (assigned.length >= shift.staffNeeded) break;
-
-      assigned.push(employee.id);
-      hours[employee.id] += shiftDuration;
-      shifts[employee.id]++;
-      assignments.push({
-        shiftId: shift.id,
-        employeeId: employee.id,
-        date,
-      });
-    }
-  }
-
-  // STEP 3: Fill remaining slots with other available employees
-  for (const { employee } of scored) {
-    if (assigned.length >= shift.staffNeeded) break;
-    if (assigned.includes(employee.id)) continue;
-
-    // Skip employees who need bartender support if we don't have one
-    if (employee.preferences.needsBartenderOnShift && !hasBartender) {
-      continue;
-    }
-
-    assigned.push(employee.id);
-    if (isBartender(employee)) hasBartender = true;
-    hours[employee.id] += shiftDuration;
-    shifts[employee.id]++;
-    assignments.push({
-      shiftId: shift.id,
-      employeeId: employee.id,
-      date,
-    });
-  }
-
-  return assigned;
 }
 
 // Export schedule to printable format

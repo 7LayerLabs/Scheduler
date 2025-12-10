@@ -10,8 +10,9 @@ export const shifts: Shift[] = [
     startTime: '07:15',
     endTime: '12:00',
     type: 'morning',
-    staffNeeded: 2,
+    requiredStaff: 2,
     requiresBartender: true,
+    duration: 4.75,
   },
   {
     id: 'tue-thu-morning',
@@ -20,8 +21,9 @@ export const shifts: Shift[] = [
     startTime: '07:15',
     endTime: '14:00',
     type: 'morning',
-    staffNeeded: 2,
+    requiredStaff: 2,
     requiresBartender: true,
+    duration: 6.75,
   },
   {
     id: 'tue-thu-mid',
@@ -30,8 +32,9 @@ export const shifts: Shift[] = [
     startTime: '10:00',
     endTime: '16:00',
     type: 'mid',
-    staffNeeded: 2,
+    requiredStaff: 2,
     requiresBartender: true,
+    duration: 6,
   },
   {
     id: 'tue-thu-lunch-mid',
@@ -40,8 +43,9 @@ export const shifts: Shift[] = [
     startTime: '12:00',
     endTime: '16:00',
     type: 'mid',
-    staffNeeded: 2,
+    requiredStaff: 2,
     requiresBartender: true,
+    duration: 4,
   },
   {
     id: 'tue-thu-early-night',
@@ -50,8 +54,9 @@ export const shifts: Shift[] = [
     startTime: '15:00',
     endTime: '21:00',
     type: 'night',
-    staffNeeded: 2,
+    requiredStaff: 2,
     requiresBartender: true,
+    duration: 6,
   },
   {
     id: 'tue-thu-night',
@@ -60,8 +65,9 @@ export const shifts: Shift[] = [
     startTime: '16:00',
     endTime: '21:00',
     type: 'night',
-    staffNeeded: 2,
+    requiredStaff: 2,
     requiresBartender: true,
+    duration: 5,
   },
   // Friday Shifts (busier dinner)
   {
@@ -71,8 +77,9 @@ export const shifts: Shift[] = [
     startTime: '07:15',
     endTime: '12:00',
     type: 'morning',
-    staffNeeded: 2,
+    requiredStaff: 2,
     requiresBartender: true,
+    duration: 4.75,
   },
   {
     id: 'fri-morning',
@@ -81,8 +88,9 @@ export const shifts: Shift[] = [
     startTime: '07:15',
     endTime: '14:00',
     type: 'morning',
-    staffNeeded: 2,
+    requiredStaff: 2,
     requiresBartender: true,
+    duration: 6.75,
   },
   {
     id: 'fri-mid',
@@ -91,8 +99,9 @@ export const shifts: Shift[] = [
     startTime: '10:00',
     endTime: '16:00',
     type: 'mid',
-    staffNeeded: 2,
+    requiredStaff: 2,
     requiresBartender: true,
+    duration: 6,
   },
   {
     id: 'fri-early-night',
@@ -101,8 +110,9 @@ export const shifts: Shift[] = [
     startTime: '15:00',
     endTime: '21:00',
     type: 'night',
-    staffNeeded: 3, // Friday needs 3
+    requiredStaff: 3, // Friday needs 3
     requiresBartender: true,
+    duration: 6,
   },
   {
     id: 'fri-night',
@@ -111,8 +121,9 @@ export const shifts: Shift[] = [
     startTime: '16:00',
     endTime: '21:00',
     type: 'night',
-    staffNeeded: 3, // Friday needs 3
+    requiredStaff: 3, // Friday needs 3
     requiresBartender: true,
+    duration: 5,
   },
   // Saturday Shifts
   {
@@ -122,8 +133,9 @@ export const shifts: Shift[] = [
     startTime: '07:15',
     endTime: '15:00',
     type: 'morning',
-    staffNeeded: 2,
+    requiredStaff: 2,
     requiresBartender: true,
+    duration: 7.75,
   },
   {
     id: 'sat-morning',
@@ -132,8 +144,9 @@ export const shifts: Shift[] = [
     startTime: '08:30',
     endTime: '15:00',
     type: 'morning',
-    staffNeeded: 2,
+    requiredStaff: 2,
     requiresBartender: true,
+    duration: 6.5,
   },
   {
     id: 'sat-night',
@@ -142,8 +155,9 @@ export const shifts: Shift[] = [
     startTime: '15:00',
     endTime: '21:00',
     type: 'night',
-    staffNeeded: 3,
+    requiredStaff: 3,
     requiresBartender: true,
+    duration: 6,
   },
   // Sunday Shifts
   {
@@ -153,8 +167,9 @@ export const shifts: Shift[] = [
     startTime: '07:15',
     endTime: '14:30',
     type: 'morning',
-    staffNeeded: 3,
+    requiredStaff: 3,
     requiresBartender: true,
+    duration: 7.25,
   },
   {
     id: 'sun-morning',
@@ -163,8 +178,9 @@ export const shifts: Shift[] = [
     startTime: '08:00',
     endTime: '14:30',
     type: 'morning',
-    staffNeeded: 3,
+    requiredStaff: 3,
     requiresBartender: true,
+    duration: 6.5,
   },
   {
     id: 'sun-mid',
@@ -173,8 +189,9 @@ export const shifts: Shift[] = [
     startTime: '08:30',
     endTime: '14:30',
     type: 'morning',
-    staffNeeded: 3,
+    requiredStaff: 3,
     requiresBartender: true,
+    duration: 6,
   },
 ];
 
