@@ -131,10 +131,10 @@ export default function Home() {
   // Migration: Move data from localStorage to InstantDB on first load
   useEffect(() => {
     const migrateData = async () => {
-      if (hasMigrated || employeesLoading || !authUser) return;
+      if (hasMigrated || employeesLoading) return;
 
       // Only migrate if InstantDB has no employees yet
-      if (dbEmployees.length === 0) {
+      if (dbEmployees.length === 0 && authUser) {
         console.log('Migrating data from localStorage to InstantDB...');
 
         // Migrate employees
@@ -251,7 +251,14 @@ export default function Home() {
   };
 
   const handleUpdateEmployee = async (updatedEmployee: Employee) => {
-    await updateEmployeeDB(updatedEmployee);
+    // If employee doesn't exist in DB yet (using fallback data), create it instead
+    const existsInDB = dbEmployees.some(e => e.id === updatedEmployee.id);
+    if (existsInDB) {
+      await updateEmployeeDB(updatedEmployee);
+    } else {
+      // Employee is from initialEmployees fallback, create it in DB
+      await createEmployee(updatedEmployee);
+    }
   };
 
   const handleAddEmployee = async (newEmployee: Employee) => {
