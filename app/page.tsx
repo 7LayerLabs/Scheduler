@@ -4,13 +4,24 @@ import { useState, useMemo, useEffect } from 'react';
 import { generateSchedule } from '@/lib/scheduler';
 import { employees as initialEmployees } from '@/lib/employees';
 import { Employee, WeeklySchedule, ScheduleOverride, LockedShift, WeeklyStaffingNeeds } from '@/lib/types';
+import { db, useCurrentUser, signOut, User, useIsFirstUser, createUserProfile } from '@/lib/instantdb';
 import Sidebar from '@/components/Sidebar';
 import ScheduleView from '@/components/ScheduleView';
 import TeamView from '@/components/TeamView';
 import NotesAndStaffingView from '@/components/NotesAndStaffingView';
 import SettingsView, { AppSettings, DEFAULT_SETTINGS } from '@/components/SettingsView';
+import LoginPage from '@/components/LoginPage';
+import StaffDashboard from '@/components/StaffDashboard';
+import UserManagement from '@/components/UserManagement';
 
 export default function Home() {
+  // Auth state
+  const { isLoading: authLoading, user: authUser, error: authError } = db.useAuth();
+  const { profile: userProfile, isLoading: profileLoading } = useCurrentUser();
+  const { isFirstUser, isLoading: checkingFirstUser } = useIsFirstUser();
+  const [showLogin, setShowLogin] = useState(false);
+  const [isCreatingProfile, setIsCreatingProfile] = useState(false);
+
   const [activeTab, setActiveTab] = useState('schedule');
   const [weekStart, setWeekStart] = useState<Date>(() => {
     const today = new Date();
@@ -283,9 +294,130 @@ export default function Home() {
     setLockedShifts([]);
   };
 
+  const handleSignOut = async () => {
+    await signOut();
+    setShowLogin(false);
+  };
+
+  // Handle auth error - show login page instead of being stuck
+  if (authError) {
+    console.error('Auth error:', authError);
+    return <LoginPage onLoginSuccess={() => window.location.reload()} />;
+  }
+
+  // Loading state - but don't wait forever
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#0d0d0f] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[#e5a825] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-[#6b6b75]">Connecting...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show login page if not authenticated
+  if (!authUser) {
+    return <LoginPage onLoginSuccess={() => window.location.reload()} />;
+  }
+
+  // Show loading while checking first user status or profile
+  if (profileLoading || checkingFirstUser || isCreatingProfile) {
+    return (
+      <div className="min-h-screen bg-[#0d0d0f] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[#e5a825] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-[#6b6b75]">{isCreatingProfile ? 'Setting up your account...' : 'Loading...'}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If no profile but this is the first user, auto-create them as manager
+  if (!userProfile && isFirstUser) {
+    // Auto-create first user as manager
+    const setupFirstUser = async () => {
+      setIsCreatingProfile(true);
+      try {
+        await createUserProfile({
+          email: authUser.email,
+          name: authUser.email.split('@')[0],
+          role: 'manager',
+          createdAt: Date.now(),
+        });
+        window.location.reload();
+      } catch (error) {
+        console.error('Failed to create profile:', error);
+        setIsCreatingProfile(false);
+      }
+    };
+    setupFirstUser();
+    return (
+      <div className="min-h-screen bg-[#0d0d0f] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[#e5a825] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-[#6b6b75]">Setting up your manager account...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If authenticated but no profile and not first user, show waiting screen
+  if (!userProfile) {
+    return (
+      <div className="min-h-screen bg-[#0d0d0f] flex items-center justify-center">
+        <div className="max-w-md w-full mx-4">
+          <div className="bg-[#141417] rounded-2xl border border-[#2a2a32] p-8 text-center">
+            <div className="w-16 h-16 bg-[#e5a825]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-[#e5a825]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold text-white mb-2">Access Pending</h2>
+            <p className="text-[#a0a0a8] mb-4">
+              Your account ({authUser.email}) is not yet set up in the system.
+            </p>
+            <p className="text-sm text-[#6b6b75] mb-6">
+              Please contact your manager to get access to the scheduling system.
+            </p>
+            <button
+              onClick={handleSignOut}
+              className="px-4 py-2 bg-[#1a1a1f] text-[#a0a0a8] rounded-lg hover:bg-[#2a2a32] transition-colors"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const currentUser: User = userProfile;
+
+  // Staff sees simplified dashboard
+  if (currentUser.role === 'staff') {
+    return (
+      <StaffDashboard
+        user={currentUser}
+        employees={employees}
+        schedule={schedule}
+        weekStart={weekStart}
+        formatWeekRange={formatWeekRange}
+        changeWeek={changeWeek}
+        staffingNeeds={staffingNeeds}
+      />
+    );
+  }
+
+  // Manager sees full dashboard
   return (
     <div className="flex min-h-screen bg-[#0d0d0f]">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        userRole={currentUser.role}
+      />
 
       <main className="flex-1 overflow-auto">
         {/* Top Header */}
@@ -312,8 +444,33 @@ export default function Home() {
                     <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-[#ef4444] rounded-full animate-pulse ring-2 ring-[#0d0d0f]" />
                   )}
                 </button>
-                <div className="w-10 h-10 bg-[#a855f7] rounded-full flex items-center justify-center cursor-pointer shadow-lg shadow-[#a855f7]/20 hover:shadow-[#a855f7]/40 hover:scale-105 transition-all duration-200 ring-2 ring-[#a855f7]/20">
-                  <span className="text-white font-semibold text-sm">DT</span>
+
+                {/* User Menu */}
+                <div className="relative group">
+                  <button className="w-10 h-10 bg-[#e5a825] rounded-full flex items-center justify-center cursor-pointer shadow-lg shadow-[#e5a825]/20 hover:shadow-[#e5a825]/40 hover:scale-105 transition-all duration-200 ring-2 ring-[#e5a825]/20">
+                    <span className="text-[#0d0d0f] font-semibold text-sm">
+                      {currentUser.name.charAt(0).toUpperCase()}
+                    </span>
+                  </button>
+
+                  {/* Dropdown */}
+                  <div className="absolute right-0 top-12 w-48 bg-[#1a1a1f] rounded-xl border border-[#2a2a32] shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                    <div className="p-3 border-b border-[#2a2a32]">
+                      <p className="text-sm font-medium text-white">{currentUser.name}</p>
+                      <p className="text-xs text-[#6b6b75]">{currentUser.email}</p>
+                      <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium bg-[#e5a825]/10 text-[#e5a825] rounded-full border border-[#e5a825]/30">
+                        {currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1)}
+                      </span>
+                    </div>
+                    <div className="p-2">
+                      <button
+                        onClick={handleSignOut}
+                        className="w-full px-3 py-2 text-left text-sm text-[#ef4444] hover:bg-[#ef4444]/10 rounded-lg transition-colors"
+                      >
+                        Sign Out
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -382,6 +539,13 @@ export default function Home() {
               onUpdateEmployee={handleUpdateEmployee}
               onAddEmployee={handleAddEmployee}
               onRemoveEmployee={handleRemoveEmployee}
+            />
+          )}
+
+          {activeTab === 'users' && (
+            <UserManagement
+              currentUser={currentUser}
+              employees={employees}
             />
           )}
 
