@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { User, useTimeOffRequests, useShiftSwapRequests, createTimeOffRequest, createShiftSwapRequest } from '@/lib/instantdb';
+import { User, TimeOffRequest, ShiftSwapRequest, useTimeOffRequests, useShiftSwapRequests, createTimeOffRequest, createShiftSwapRequest } from '@/lib/instantdb';
 import { Employee, WeeklySchedule, WeeklyStaffingNeeds } from '@/lib/types';
 
 interface Props {
@@ -168,7 +168,7 @@ export default function StaffDashboard({
 
           <div className="space-y-3">
             {/* Time Off Requests */}
-            {timeOffRequests.map((request) => (
+            {timeOffRequests.map((request: TimeOffRequest) => (
               <div
                 key={request.id}
                 className="flex items-center justify-between p-4 bg-[#141417] rounded-xl border border-[#2a2a32]"
@@ -182,7 +182,7 @@ export default function StaffDashboard({
             ))}
 
             {/* Swap Requests */}
-            {swapRequests.map((request) => (
+            {swapRequests.map((request: ShiftSwapRequest) => (
               <div
                 key={request.id}
                 className="flex items-center justify-between p-4 bg-[#141417] rounded-xl border border-[#2a2a32]"
