@@ -15,6 +15,18 @@ export interface Employee {
   exclusions: Exclusion[];
   preferences: Preferences;
   minShiftsPerWeek?: number;
+  restrictions?: EmployeeRestriction[]; // Time-based restrictions
+}
+
+// Employee-specific scheduling restrictions
+export interface EmployeeRestriction {
+  id: string;
+  type: 'no_before' | 'no_after' | 'unavailable_range';
+  time?: string;           // For no_before: earliest they can start, no_after: latest they can work until
+  startTime?: string;      // For unavailable_range
+  endTime?: string;        // For unavailable_range
+  days: DayOfWeek[];       // Which days this applies to (empty = all working days)
+  reason?: string;         // e.g., "School pickup", "Second job"
 }
 
 export interface Availability {

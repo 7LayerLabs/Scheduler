@@ -8,7 +8,8 @@ import {
   DayOfWeek,
   DayAvailability,
   ScheduleOverride,
-  WeeklyStaffingNeeds
+  WeeklyStaffingNeeds,
+  EmployeeRestriction
 } from './types';
 
 
@@ -58,6 +59,74 @@ function isTimeInRange(time: string, start: string, end: string): boolean {
   const s = timeToMinutes(start);
   const e = timeToMinutes(end);
   return t >= s && t < e;
+}
+
+// Check if employee restrictions allow working a shift
+function checkRestrictions(
+  employee: Employee,
+  day: DayOfWeek,
+  shiftStartTime: string,
+  shiftEndTime: string
+): { allowed: boolean; reason?: string } {
+  if (!employee.restrictions || employee.restrictions.length === 0) {
+    return { allowed: true };
+  }
+
+  const shiftStart = timeToMinutes(shiftStartTime);
+  const shiftEnd = timeToMinutes(shiftEndTime);
+
+  for (const restriction of employee.restrictions) {
+    // Check if restriction applies to this day
+    // If days array is empty, it applies to all working days
+    if (restriction.days.length > 0 && !restriction.days.includes(day)) {
+      continue;
+    }
+
+    switch (restriction.type) {
+      case 'no_before':
+        // Employee cannot start work before this time
+        if (restriction.time) {
+          const earliestStart = timeToMinutes(restriction.time);
+          if (shiftStart < earliestStart) {
+            return {
+              allowed: false,
+              reason: `${employee.name} cannot work before ${restriction.time}${restriction.reason ? ` (${restriction.reason})` : ''}`
+            };
+          }
+        }
+        break;
+
+      case 'no_after':
+        // Employee must finish work by this time
+        if (restriction.time) {
+          const latestEnd = timeToMinutes(restriction.time);
+          if (shiftEnd > latestEnd) {
+            return {
+              allowed: false,
+              reason: `${employee.name} cannot work after ${restriction.time}${restriction.reason ? ` (${restriction.reason})` : ''}`
+            };
+          }
+        }
+        break;
+
+      case 'unavailable_range':
+        // Employee is unavailable during this time range
+        if (restriction.startTime && restriction.endTime) {
+          const unavailStart = timeToMinutes(restriction.startTime);
+          const unavailEnd = timeToMinutes(restriction.endTime);
+          // Check if shift overlaps with unavailable range
+          if (shiftStart < unavailEnd && shiftEnd > unavailStart) {
+            return {
+              allowed: false,
+              reason: `${employee.name} is unavailable ${restriction.startTime}-${restriction.endTime}${restriction.reason ? ` (${restriction.reason})` : ''}`
+            };
+          }
+        }
+        break;
+    }
+  }
+
+  return { allowed: true };
 }
 
 // Check if employee is available for a specific date and time
@@ -1046,6 +1115,13 @@ function assignShift(
       (o.shiftType === 'any' || o.shiftType === shift.type)
     );
     if (isExcluded) return false;
+
+    // Check restrictions (no_before, no_after, unavailable_range)
+    const restrictionCheck = checkRestrictions(emp, shift.day, shift.startTime, shift.endTime);
+    if (!restrictionCheck.allowed) {
+      console.log(`Restriction blocked: ${restrictionCheck.reason}`);
+      return false;
+    }
 
     // Check availability
     const dayKey = shift.day as keyof typeof emp.availability;

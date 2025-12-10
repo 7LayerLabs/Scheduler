@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Employee, Availability, DayAvailability } from '@/lib/types';
+import { Employee, Availability, DayAvailability, EmployeeRestriction, DayOfWeek } from '@/lib/types';
 
 interface Props {
   employees: Employee[];
@@ -28,6 +28,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
   const [editAlone, setEditAlone] = useState(0);
   const [editMinShifts, setEditMinShifts] = useState<number | undefined>(undefined);
   const [editAvailability, setEditAvailability] = useState<Availability | null>(null);
+  const [editRestrictions, setEditRestrictions] = useState<EmployeeRestriction[]>([]);
 
   type DayKey = 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
   type ShiftType = 'morning' | 'mid' | 'night' | 'any' | 'none';
@@ -90,6 +91,8 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
       setEditMinShifts(selectedEmployee.minShiftsPerWeek);
       // Deep clone the availability
       setEditAvailability(JSON.parse(JSON.stringify(selectedEmployee.availability)));
+      // Deep clone restrictions
+      setEditRestrictions(JSON.parse(JSON.stringify(selectedEmployee.restrictions || [])));
       setIsEditing(true);
     }
   };
@@ -142,11 +145,44 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
         aloneScale: editAlone,
         minShiftsPerWeek: editMinShifts,
         availability: editAvailability,
+        restrictions: editRestrictions,
       };
       onUpdateEmployee(updatedEmployee);
       setSelectedEmployee(updatedEmployee);
       setIsEditing(false);
     }
+  };
+
+  // Restriction management functions
+  const addRestriction = () => {
+    const newRestriction: EmployeeRestriction = {
+      id: `restriction-${Date.now()}`,
+      type: 'no_before',
+      time: '09:00',
+      days: [],
+      reason: '',
+    };
+    setEditRestrictions([...editRestrictions, newRestriction]);
+  };
+
+  const updateRestriction = (id: string, updates: Partial<EmployeeRestriction>) => {
+    setEditRestrictions(editRestrictions.map(r =>
+      r.id === id ? { ...r, ...updates } : r
+    ));
+  };
+
+  const removeRestriction = (id: string) => {
+    setEditRestrictions(editRestrictions.filter(r => r.id !== id));
+  };
+
+  const toggleRestrictionDay = (restrictionId: string, day: DayOfWeek) => {
+    setEditRestrictions(editRestrictions.map(r => {
+      if (r.id !== restrictionId) return r;
+      const days = r.days.includes(day)
+        ? r.days.filter(d => d !== day)
+        : [...r.days, day];
+      return { ...r, days };
+    }));
   };
 
   const cancelEditing = () => {
@@ -314,7 +350,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
         </div>
 
         {/* Employee Details Panel */}
-        <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-6">
+        <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-6 max-h-[calc(100vh-200px)] overflow-y-auto">
           {selectedEmployee ? (
             <div>
               {/* Header */}
@@ -439,7 +475,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                 </div>
               )}
 
-              {/* Availability - View Mode */}
+              {/* Availability & Restrictions - View Mode */}
               {!isEditing && (
                 <div className="mb-6">
                   <h4 className="text-sm font-medium text-white mb-3">Weekly Availability</h4>
@@ -478,6 +514,35 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                         </div>
                       );
                     })}
+                  </div>
+
+                  {/* Time Restrictions - View Mode (inline under availability) */}
+                  <div className="mt-4 pt-4 border-t border-[#2a2a32]">
+                    <h4 className="text-sm font-medium text-white mb-2">Time Restrictions</h4>
+                    {(!selectedEmployee.restrictions || selectedEmployee.restrictions.length === 0) ? (
+                      <p className="text-xs text-[#6b6b75]">No restrictions set</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {selectedEmployee.restrictions.map((r) => (
+                          <div key={r.id} className="p-2 bg-[#141417] rounded-lg border border-[#ef4444]/30">
+                            <div className="text-xs text-[#ef4444] font-medium">
+                              {r.type === 'no_before' && `Cannot start before ${r.time}`}
+                              {r.type === 'no_after' && `Must finish by ${r.time}`}
+                              {r.type === 'unavailable_range' && `Unavailable ${r.startTime}-${r.endTime}`}
+                            </div>
+                            {r.days.length > 0 && (
+                              <div className="text-xs text-[#6b6b75] mt-1">
+                                {r.days.map(d => d.charAt(0).toUpperCase() + d.slice(0, 2)).join(', ')}
+                              </div>
+                            )}
+                            {r.days.length === 0 && (
+                              <div className="text-xs text-[#6b6b75] mt-1">All days</div>
+                            )}
+                            {r.reason && <div className="text-xs text-[#a0a0a8] mt-1">{r.reason}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -521,6 +586,109 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                         </div>
                       );
                     })}
+                  </div>
+                </div>
+              )}
+
+              {/* Restrictions - Edit Mode */}
+              {isEditing && (
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-medium text-white">Time Restrictions</h4>
+                    <button
+                      type="button"
+                      onClick={addRestriction}
+                      className="text-xs text-[#e5a825] hover:text-[#f0b429] font-medium"
+                    >
+                      + Add Restriction
+                    </button>
+                  </div>
+                  {editRestrictions.length === 0 && (
+                    <p className="text-xs text-[#6b6b75]">No restrictions set</p>
+                  )}
+                  <div className="space-y-3">
+                    {editRestrictions.map((r) => (
+                      <div key={r.id} className="p-3 bg-[#141417] rounded-lg border border-[#2a2a32]">
+                        {/* Restriction Type */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <select
+                            value={r.type}
+                            onChange={(e) => updateRestriction(r.id, { type: e.target.value as EmployeeRestriction['type'] })}
+                            className="flex-1 px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#e5a825]/40"
+                          >
+                            <option value="no_before">Cannot start before</option>
+                            <option value="no_after">Must finish by</option>
+                            <option value="unavailable_range">Unavailable range</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => removeRestriction(r.id)}
+                            className="p-1 text-[#ef4444] hover:bg-[#ef4444]/10 rounded"
+                          >
+                            <TrashIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Time Input(s) */}
+                        {(r.type === 'no_before' || r.type === 'no_after') && (
+                          <div className="mb-2">
+                            <input
+                              type="time"
+                              value={r.time || ''}
+                              onChange={(e) => updateRestriction(r.id, { time: e.target.value })}
+                              className="w-full px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#e5a825]/40"
+                            />
+                          </div>
+                        )}
+                        {r.type === 'unavailable_range' && (
+                          <div className="flex items-center gap-2 mb-2">
+                            <input
+                              type="time"
+                              value={r.startTime || ''}
+                              onChange={(e) => updateRestriction(r.id, { startTime: e.target.value })}
+                              className="flex-1 px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#e5a825]/40"
+                            />
+                            <span className="text-xs text-[#6b6b75]">to</span>
+                            <input
+                              type="time"
+                              value={r.endTime || ''}
+                              onChange={(e) => updateRestriction(r.id, { endTime: e.target.value })}
+                              className="flex-1 px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#e5a825]/40"
+                            />
+                          </div>
+                        )}
+
+                        {/* Days Selection */}
+                        <div className="mb-2">
+                          <div className="text-xs text-[#6b6b75] mb-1">Applies to (leave empty for all days):</div>
+                          <div className="flex flex-wrap gap-1">
+                            {(['tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as DayOfWeek[]).map((day) => (
+                              <button
+                                key={day}
+                                type="button"
+                                onClick={() => toggleRestrictionDay(r.id, day)}
+                                className={`px-2 py-0.5 text-xs rounded font-medium transition-colors ${
+                                  r.days.includes(day)
+                                    ? 'bg-[#ef4444] text-white'
+                                    : 'bg-[#2a2a32] text-[#6b6b75] hover:bg-[#3a3a45]'
+                                }`}
+                              >
+                                {day.charAt(0).toUpperCase() + day.slice(0, 2)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Reason */}
+                        <input
+                          type="text"
+                          placeholder="Reason (optional)"
+                          value={r.reason || ''}
+                          onChange={(e) => updateRestriction(r.id, { reason: e.target.value })}
+                          className="w-full px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#e5a825]/40 placeholder:text-[#6b6b75]"
+                        />
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

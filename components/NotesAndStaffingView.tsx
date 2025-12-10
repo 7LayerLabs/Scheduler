@@ -16,6 +16,7 @@ interface Props {
   staffingNeeds: WeeklyStaffingNeeds;
   setStaffingNeeds: (needs: WeeklyStaffingNeeds) => void;
   saveAsDefaultTemplate?: () => void;
+  showSavedDefaultMessage?: boolean;
   // Permanent rules (apply to ALL weeks)
   permanentRules: ScheduleOverride[];
   setPermanentRules: (rules: ScheduleOverride[]) => void;
@@ -39,6 +40,7 @@ export default function NotesAndStaffingView({
   staffingNeeds,
   setStaffingNeeds,
   saveAsDefaultTemplate,
+  showSavedDefaultMessage,
   permanentRules,
   setPermanentRules,
   permanentRulesDisplay,
@@ -478,11 +480,24 @@ Examples:
             {saveAsDefaultTemplate && (
               <button
                 onClick={saveAsDefaultTemplate}
-                className="px-3 py-1.5 text-xs font-medium bg-[#a855f7]/10 text-[#a855f7] border border-[#a855f7]/30 rounded-lg hover:bg-[#a855f7]/20 hover:border-[#a855f7]/50 transition-colors flex items-center gap-1.5"
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
+                  showSavedDefaultMessage
+                    ? 'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
+                    : 'bg-[#a855f7]/10 text-[#a855f7] border border-[#a855f7]/30 hover:bg-[#a855f7]/20 hover:border-[#a855f7]/50'
+                }`}
                 title="Save current staffing setup as the default for new weeks"
               >
-                <SaveIcon className="w-3.5 h-3.5" />
-                Save as Default
+                {showSavedDefaultMessage ? (
+                  <>
+                    <CheckIcon className="w-3.5 h-3.5" />
+                    Saved!
+                  </>
+                ) : (
+                  <>
+                    <SaveIcon className="w-3.5 h-3.5" />
+                    Save as Default
+                  </>
+                )}
               </button>
             )}
           </div>

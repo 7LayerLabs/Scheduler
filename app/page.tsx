@@ -112,6 +112,44 @@ export default function Home() {
   const [lockedShifts, setLockedShifts] = useState<LockedShift[]>([]);
   const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
   const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+
+  // Logo state with localStorage persistence
+  const [logoUrl, setLogoUrlState] = useState<string | null>(null);
+
+  // Profile picture state with localStorage persistence
+  const [profilePicUrl, setProfilePicUrlState] = useState<string | null>(null);
+
+  // Load logo and profile pic from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedLogo = localStorage.getItem('bobolas-logo');
+      if (savedLogo) setLogoUrlState(savedLogo);
+      const savedProfilePic = localStorage.getItem('bobolas-profile-pic');
+      if (savedProfilePic) setProfilePicUrlState(savedProfilePic);
+    } catch (e) {
+      console.error('Error loading from localStorage:', e);
+    }
+  }, []);
+
+  // Save logo to localStorage
+  const setLogoUrl = (url: string | null) => {
+    setLogoUrlState(url);
+    if (url) {
+      localStorage.setItem('bobolas-logo', url);
+    } else {
+      localStorage.removeItem('bobolas-logo');
+    }
+  };
+
+  // Save profile pic to localStorage
+  const setProfilePicUrl = (url: string | null) => {
+    setProfilePicUrlState(url);
+    if (url) {
+      localStorage.setItem('bobolas-profile-pic', url);
+    } else {
+      localStorage.removeItem('bobolas-profile-pic');
+    }
+  };
   const DEFAULT_STAFFING_NEEDS: WeeklyStaffingNeeds = {
     tuesday: {
       slots: [
@@ -200,9 +238,15 @@ export default function Home() {
   };
 
   // Save current week's staffing as the new default template
+  const [showSavedDefaultMessage, setShowSavedDefaultMessage] = useState(false);
   const saveAsDefaultTemplate = () => {
-    setDefaultStaffingTemplateState(staffingNeeds);
-    localStorage.setItem('bobolas-default-staffing-template', JSON.stringify(staffingNeeds));
+    // Get the current staffing needs (either from this week's saved data or the current state)
+    const currentStaffing = weeklyStaffingNeeds[currentWeekKey] || staffingNeeds;
+    setDefaultStaffingTemplateState(currentStaffing);
+    localStorage.setItem('bobolas-default-staffing-template', JSON.stringify(currentStaffing));
+    // Show confirmation
+    setShowSavedDefaultMessage(true);
+    setTimeout(() => setShowSavedDefaultMessage(false), 2000);
   };
 
   const handleUpdateEmployee = (updatedEmployee: Employee) => {
@@ -417,6 +461,7 @@ export default function Home() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         userRole={currentUser.role}
+        logoUrl={logoUrl}
       />
 
       <main className="flex-1 overflow-auto">
@@ -447,26 +492,72 @@ export default function Home() {
 
                 {/* User Menu */}
                 <div className="relative group">
-                  <button className="w-10 h-10 bg-[#e5a825] rounded-full flex items-center justify-center cursor-pointer shadow-lg shadow-[#e5a825]/20 hover:shadow-[#e5a825]/40 hover:scale-105 transition-all duration-200 ring-2 ring-[#e5a825]/20">
-                    <span className="text-[#0d0d0f] font-semibold text-sm">
-                      {currentUser.name.charAt(0).toUpperCase()}
-                    </span>
+                  <button className="w-10 h-10 bg-[#e5a825] rounded-full flex items-center justify-center cursor-pointer shadow-lg shadow-[#e5a825]/20 hover:shadow-[#e5a825]/40 hover:scale-105 transition-all duration-200 ring-2 ring-[#e5a825]/20 overflow-hidden">
+                    {profilePicUrl ? (
+                      <img src={profilePicUrl} alt="Profile" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-[#0d0d0f] font-semibold text-sm">
+                        {currentUser.name.charAt(0).toUpperCase()}
+                      </span>
+                    )}
                   </button>
 
                   {/* Dropdown */}
-                  <div className="absolute right-0 top-12 w-48 bg-[#1a1a1f] rounded-xl border border-[#2a2a32] shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                  <div className="absolute right-0 top-12 w-56 bg-[#1a1a1f] rounded-xl border border-[#2a2a32] shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
                     <div className="p-3 border-b border-[#2a2a32]">
-                      <p className="text-sm font-medium text-white">{currentUser.name}</p>
-                      <p className="text-xs text-[#6b6b75]">{currentUser.email}</p>
-                      <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium bg-[#e5a825]/10 text-[#e5a825] rounded-full border border-[#e5a825]/30">
-                        {currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1)}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-[#e5a825] rounded-full flex items-center justify-center overflow-hidden flex-shrink-0">
+                          {profilePicUrl ? (
+                            <img src={profilePicUrl} alt="Profile" className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-[#0d0d0f] font-semibold text-lg">
+                              {currentUser.name.charAt(0).toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-white truncate">{currentUser.name}</p>
+                          <p className="text-xs text-[#6b6b75] truncate">{currentUser.email}</p>
+                          <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium bg-[#e5a825]/10 text-[#e5a825] rounded-full border border-[#e5a825]/30">
+                            {currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="p-2">
+                    <div className="p-2 space-y-1">
+                      <label className="w-full px-3 py-2 text-left text-sm text-[#a0a0a8] hover:bg-[#2a2a32] rounded-lg transition-colors flex items-center gap-2 cursor-pointer">
+                        <CameraIcon className="w-4 h-4" />
+                        {profilePicUrl ? 'Change Photo' : 'Add Photo'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (event) => {
+                                setProfilePicUrl(event.target?.result as string);
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+                      {profilePicUrl && (
+                        <button
+                          onClick={() => setProfilePicUrl(null)}
+                          className="w-full px-3 py-2 text-left text-sm text-[#a0a0a8] hover:bg-[#2a2a32] rounded-lg transition-colors flex items-center gap-2"
+                        >
+                          <TrashIcon className="w-4 h-4" />
+                          Remove Photo
+                        </button>
+                      )}
                       <button
                         onClick={handleSignOut}
-                        className="w-full px-3 py-2 text-left text-sm text-[#ef4444] hover:bg-[#ef4444]/10 rounded-lg transition-colors"
+                        className="w-full px-3 py-2 text-left text-sm text-[#ef4444] hover:bg-[#ef4444]/10 rounded-lg transition-colors flex items-center gap-2"
                       >
+                        <LogoutIcon className="w-4 h-4" />
                         Sign Out
                       </button>
                     </div>
@@ -522,6 +613,7 @@ export default function Home() {
               staffingNeeds={staffingNeeds}
               setStaffingNeeds={setStaffingNeeds}
               saveAsDefaultTemplate={saveAsDefaultTemplate}
+              showSavedDefaultMessage={showSavedDefaultMessage}
               permanentRules={permanentRules}
               setPermanentRules={setPermanentRules}
               permanentRulesDisplay={permanentRulesDisplay}
@@ -546,6 +638,7 @@ export default function Home() {
             <UserManagement
               currentUser={currentUser}
               employees={employees}
+              profilePicUrl={profilePicUrl}
             />
           )}
 
@@ -557,6 +650,8 @@ export default function Home() {
               employees={employees}
               weekStart={weekStart}
               formatWeekRange={formatWeekRange}
+              logoUrl={logoUrl}
+              onLogoChange={setLogoUrl}
               onExportSchedule={() => {
                 // Simple CSV export
                 if (!schedule) return;
@@ -619,6 +714,31 @@ function SettingsIcon({ className }: { className?: string }) {
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  );
+}
+
+function CameraIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+    </svg>
+  );
+}
+
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+    </svg>
+  );
+}
+
+function LogoutIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
     </svg>
   );
 }

@@ -16,9 +16,10 @@ import { Employee } from '@/lib/types';
 interface Props {
   currentUser: User;
   employees: Employee[];
+  profilePicUrl?: string | null;
 }
 
-export default function UserManagement({ currentUser, employees }: Props) {
+export default function UserManagement({ currentUser, employees, profilePicUrl }: Props) {
   const [showAddUser, setShowAddUser] = useState(false);
   const [activeTab, setActiveTab] = useState<'users' | 'timeoff' | 'swaps'>('users');
 
@@ -75,7 +76,7 @@ export default function UserManagement({ currentUser, employees }: Props) {
 
       {/* Content */}
       {activeTab === 'users' && (
-        <UsersTab users={users} employees={employees} isLoading={loadingUsers} />
+        <UsersTab users={users} employees={employees} isLoading={loadingUsers} currentUser={currentUser} profilePicUrl={profilePicUrl} />
       )}
 
       {activeTab === 'timeoff' && (
@@ -150,10 +151,14 @@ function UsersTab({
   users,
   employees,
   isLoading,
+  currentUser,
+  profilePicUrl,
 }: {
   users: User[];
   employees: Employee[];
   isLoading: boolean;
+  currentUser: User;
+  profilePicUrl?: string | null;
 }) {
   if (isLoading) {
     return <div className="text-center py-8 text-[#6b6b75]">Loading users...</div>;
@@ -173,16 +178,26 @@ function UsersTab({
         <tbody className="divide-y divide-[#2a2a32]">
           {users.map((user) => {
             const linkedEmployee = employees.find(e => e.id === user.employeeId);
+            const isCurrentUser = user.email === currentUser.email;
             return (
               <tr key={user.id} className="hover:bg-[#222228]">
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold overflow-hidden ${
                       user.role === 'manager' ? 'bg-[#e5a825] text-[#0d0d0f]' : 'bg-[#3b82f6] text-white'
                     }`}>
-                      {user.name.charAt(0).toUpperCase()}
+                      {isCurrentUser && profilePicUrl ? (
+                        <img src={profilePicUrl} alt="Profile" className="w-full h-full object-cover" />
+                      ) : (
+                        user.name.charAt(0).toUpperCase()
+                      )}
                     </div>
-                    <span className="text-white font-medium">{user.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-white font-medium">{user.name}</span>
+                      {isCurrentUser && (
+                        <span className="text-xs text-[#6b6b75]">(You)</span>
+                      )}
+                    </div>
                   </div>
                 </td>
                 <td className="px-6 py-4 text-[#a0a0a8]">{user.email}</td>

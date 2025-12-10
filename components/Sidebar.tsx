@@ -4,6 +4,7 @@ interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   userRole?: 'manager' | 'staff';
+  logoUrl?: string | null;
 }
 
 // Icon Components - defined before use
@@ -56,7 +57,7 @@ function NotesIcon({ className }: { className?: string }) {
   );
 }
 
-export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager' }: SidebarProps) {
+export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager', logoUrl }: SidebarProps) {
   // Base nav items for all users
   const baseNavItems = [
     { id: 'schedule', label: 'Schedule', icon: CalendarIcon },
@@ -80,8 +81,12 @@ export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager' 
       {/* Logo */}
       <div className="p-6 border-b border-[#2a2a32]">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-[#e5a825] rounded-xl flex items-center justify-center shadow-lg shadow-[#e5a825]/20 transform hover:scale-105 transition-transform">
-            <span className="text-[#0d0d0f] font-bold text-xl">B</span>
+          <div className="w-11 h-11 bg-[#e5a825] rounded-xl flex items-center justify-center shadow-lg shadow-[#e5a825]/20 transform hover:scale-105 transition-transform overflow-hidden">
+            {logoUrl ? (
+              <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-[#0d0d0f] font-bold text-xl">B</span>
+            )}
           </div>
           <div>
             <h1 className="font-bold text-white text-lg tracking-tight">Bobola&apos;s</h1>
