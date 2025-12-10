@@ -127,25 +127,40 @@ export default function Home() {
   const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   // Logo from InstantDB with local state for optimistic updates
+  // Track if we're in the middle of an upload to prevent DB overwrites
   const [localLogoUrl, setLocalLogoUrl] = useState<string | null>(null);
-  const logoUrl = localLogoUrl ?? dbLogoUrl;
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
-  // Sync local state with DB when dbLogoUrl changes
+  // Use local state if uploading, otherwise use DB value
+  const logoUrl = isUploadingLogo ? localLogoUrl : (localLogoUrl ?? dbLogoUrl);
+
+  // Sync local state with DB when dbLogoUrl changes (but not during upload)
   useEffect(() => {
-    if (dbLogoUrl && !localLogoUrl) {
+    if (!isUploadingLogo && dbLogoUrl) {
       setLocalLogoUrl(dbLogoUrl);
     }
-  }, [dbLogoUrl]);
+  }, [dbLogoUrl, isUploadingLogo]);
 
   const setLogoUrl = async (url: string | null) => {
-    // Optimistically update local state
+    console.log('setLogoUrl called with:', url ? `${url.substring(0, 50)}...` : 'null');
+    // Mark as uploading to prevent DB sync from overwriting
+    setIsUploadingLogo(true);
     setLocalLogoUrl(url);
+
     try {
       await updateLogoUrl(url);
+      console.log('Logo saved to DB successfully');
+      // Keep showing local URL until DB confirms
+      // The useEffect will sync when DB updates
     } catch (error) {
-      console.error('Failed to save logo, reverting...', error);
+      console.error('Failed to save logo:', error);
       // Revert on error
       setLocalLogoUrl(dbLogoUrl);
+    } finally {
+      // Small delay to let DB sync complete before allowing overwrites
+      setTimeout(() => {
+        setIsUploadingLogo(false);
+      }, 1000);
     }
   };
 
