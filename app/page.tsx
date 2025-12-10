@@ -378,14 +378,15 @@ export default function Home() {
   }
 
   // If no profile but this is the first user, auto-create them as manager
-  if (!userProfile && isFirstUser) {
+  if (!userProfile && isFirstUser && authUser?.email) {
     // Auto-create first user as manager
     const setupFirstUser = async () => {
       setIsCreatingProfile(true);
       try {
+        const email = authUser.email as string;
         await createUserProfile({
-          email: authUser.email,
-          name: authUser.email.split('@')[0],
+          email: email,
+          name: email.split('@')[0],
           role: 'manager',
           createdAt: Date.now(),
         });
