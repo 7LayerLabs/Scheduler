@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { ScheduleOverride, Employee, WeeklyStaffingNeeds, StaffingSlot } from '@/lib/types';
 import { parseScheduleNotes, formatParsedOverrides } from '@/lib/parseNotes';
 
@@ -54,25 +54,33 @@ export default function NotesAndStaffingView({
   setWeekLockedRulesDisplay,
   setWeekLockedRulesAndDisplay
 }: Props) {
-  const [parsedPreview, setParsedPreview] = useState<string[]>([]);
-  const [parsedRules, setParsedRules] = useState<ScheduleOverride[]>([]);
   const [copiedDay, setCopiedDay] = useState<{ slots: StaffingSlot[]; notes?: string; fromDay: string } | null>(null);
 
-  // Parse notes as user types (preview only)
+  // Local state for notes input (to avoid saving to DB on every keystroke)
+  const [localNotes, setLocalNotes] = useState(notes);
+
+  // Track if we just cleared notes locally to prevent re-sync from DB
+  const justClearedRef = useRef(false);
+
+  // Sync local notes when DB notes change (e.g., when switching weeks)
+  // But skip if we just cleared notes locally
   useEffect(() => {
-    console.log('Notes changed:', notes);
-    if (notes.trim()) {
-      const parsed = parseScheduleNotes(notes, employees);
-      const formatted = formatParsedOverrides(parsed, employees);
-      console.log('Parsed rules:', parsed.length, parsed);
-      console.log('Formatted preview:', formatted);
-      setParsedPreview(formatted);
-      setParsedRules(parsed);
-    } else {
-      setParsedPreview([]);
-      setParsedRules([]);
+    if (justClearedRef.current) {
+      justClearedRef.current = false;
+      return;
     }
-  }, [notes, employees]);
+    setLocalNotes(notes);
+  }, [notes]);
+
+  // Derive parsed preview and rules from localNotes using useMemo (no setState in effects)
+  const { parsedPreview, parsedRules } = useMemo(() => {
+    if (localNotes.trim()) {
+      const parsed = parseScheduleNotes(localNotes, employees);
+      const formatted = formatParsedOverrides(parsed, employees);
+      return { parsedPreview: formatted, parsedRules: parsed };
+    }
+    return { parsedPreview: [], parsedRules: [] };
+  }, [localNotes, employees]);
 
   // Combine permanent + week-specific rules for overrides
   useEffect(() => {
@@ -83,15 +91,9 @@ export default function NotesAndStaffingView({
 
   // Apply rules for THIS WEEK ONLY
   const handleApplyWeekRules = () => {
-    // Parse fresh to avoid stale state issues
-    const freshParsed = notes.trim() ? parseScheduleNotes(notes, employees) : [];
-    const freshDisplay = notes.trim() ? formatParsedOverrides(freshParsed, employees) : [];
-
-    console.log('Apply Week Rules clicked, freshParsed:', freshParsed.length);
-    if (freshParsed.length > 0) {
-      const newRules = [...weekLockedRules, ...freshParsed];
-      const newDisplay = [...weekLockedRulesDisplay, ...freshDisplay];
-      console.log('Setting week rules:', newRules.length);
+    if (parsedRules.length > 0) {
+      const newRules = [...weekLockedRules, ...parsedRules];
+      const newDisplay = [...weekLockedRulesDisplay, ...parsedPreview];
       // Use combined setter to avoid race condition, fall back to individual setters
       if (setWeekLockedRulesAndDisplay) {
         setWeekLockedRulesAndDisplay(newRules, newDisplay);
@@ -99,24 +101,18 @@ export default function NotesAndStaffingView({
         setWeekLockedRules(newRules);
         setWeekLockedRulesDisplay(newDisplay);
       }
-      // Clear input and parsed state after applying
-      setNotes('');
-      setParsedPreview([]);
-      setParsedRules([]);
+      // Clear input after applying - set flag to prevent re-sync from DB
+      justClearedRef.current = true;
+      setLocalNotes('');
+      setNotes(''); // Also clear in DB
     }
   };
 
   // Apply rules PERMANENTLY (all weeks)
   const handleApplyPermanentRules = () => {
-    // Parse fresh to avoid stale state issues
-    const freshParsed = notes.trim() ? parseScheduleNotes(notes, employees) : [];
-    const freshDisplay = notes.trim() ? formatParsedOverrides(freshParsed, employees) : [];
-
-    console.log('Apply Permanent Rules clicked, freshParsed:', freshParsed.length);
-    if (freshParsed.length > 0) {
-      const newRules = [...permanentRules, ...freshParsed];
-      const newDisplay = [...permanentRulesDisplay, ...freshDisplay];
-      console.log('Setting permanent rules:', newRules.length);
+    if (parsedRules.length > 0) {
+      const newRules = [...permanentRules, ...parsedRules];
+      const newDisplay = [...permanentRulesDisplay, ...parsedPreview];
       // Use combined setter to avoid race condition, fall back to individual setters
       if (setPermanentRulesAndDisplay) {
         setPermanentRulesAndDisplay(newRules, newDisplay);
@@ -124,10 +120,10 @@ export default function NotesAndStaffingView({
         setPermanentRules(newRules);
         setPermanentRulesDisplay(newDisplay);
       }
-      // Clear input and parsed state after applying
-      setNotes('');
-      setParsedPreview([]);
-      setParsedRules([]);
+      // Clear input after applying - set flag to prevent re-sync from DB
+      justClearedRef.current = true;
+      setLocalNotes('');
+      setNotes(''); // Also clear in DB
     }
   };
 
@@ -324,12 +320,25 @@ export default function NotesAndStaffingView({
         <div className="flex flex-col md:flex-row gap-4 items-stretch">
           {/* Left: Instructions Input */}
           <div className="flex-1">
-            <label className="block text-sm font-medium text-[#a0a0a8] mb-2">
-              Scheduling Instructions
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-[#a0a0a8]">
+                Scheduling Instructions
+              </label>
+              {localNotes.trim() && (
+                <button
+                  onClick={() => {
+                    setLocalNotes('');
+                    setNotes('');
+                  }}
+                  className="text-xs text-[#ef4444] hover:text-[#f87171] transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
             <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              value={localNotes}
+              onChange={(e) => setLocalNotes(e.target.value)}
               placeholder="Type natural language instructions...
 
 Examples:

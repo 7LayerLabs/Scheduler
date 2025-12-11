@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { User, TimeOffRequest, ShiftSwapRequest, useTimeOffRequests, useShiftSwapRequests, createTimeOffRequest, createShiftSwapRequest } from '@/lib/instantdb';
-import { Employee, WeeklySchedule, WeeklyStaffingNeeds } from '@/lib/types';
+import { Employee, WeeklySchedule } from '@/lib/types';
 
 interface Props {
   user: User;
@@ -11,7 +11,6 @@ interface Props {
   weekStart: Date;
   formatWeekRange: (date: Date) => string;
   changeWeek: (delta: number) => void;
-  staffingNeeds: WeeklyStaffingNeeds;
 }
 
 export default function StaffDashboard({
@@ -21,16 +20,14 @@ export default function StaffDashboard({
   weekStart,
   formatWeekRange,
   changeWeek,
-  staffingNeeds,
 }: Props) {
   const [showTimeOffModal, setShowTimeOffModal] = useState(false);
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [selectedShift, setSelectedShift] = useState<{ date: string; shiftType: 'morning' | 'night' } | null>(null);
 
   // Find the employee linked to this user
-  const myEmployee = employees.find(e => e.id === user.employeeId);
-  const { requests: timeOffRequests, isLoading: loadingTimeOff } = useTimeOffRequests(user.employeeId);
-  const { requests: swapRequests, isLoading: loadingSwaps } = useShiftSwapRequests(user.employeeId);
+  const { requests: timeOffRequests } = useTimeOffRequests(user.employeeId);
+  const { requests: swapRequests } = useShiftSwapRequests(user.employeeId);
 
   // Get my shifts for this week
   const myShifts = schedule?.assignments.filter(a => a.employeeId === user.employeeId) || [];

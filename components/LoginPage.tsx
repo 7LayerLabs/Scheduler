@@ -5,9 +5,10 @@ import { signInWithEmail, verifyMagicCode } from '@/lib/instantdb';
 
 interface Props {
   onLoginSuccess: () => void;
+  logoUrl?: string | null;
 }
 
-export default function LoginPage({ onLoginSuccess }: Props) {
+export default function LoginPage({ onLoginSuccess, logoUrl }: Props) {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [step, setStep] = useState<'email' | 'code'>('email');
@@ -47,6 +48,15 @@ export default function LoginPage({ onLoginSuccess }: Props) {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
+          {logoUrl ? (
+            <div className="w-24 h-24 mx-auto mb-4 rounded-full overflow-hidden border-2 border-[#e5a825] shadow-lg shadow-[#e5a825]/20">
+              <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
+            </div>
+          ) : (
+            <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-[#1a1a1f] border-2 border-[#2a2a32] flex items-center justify-center">
+              <span className="text-3xl">🍕</span>
+            </div>
+          )}
           <h1 className="text-4xl font-bold text-white">
             Bobola<span className="text-[#e5a825]">&apos;</span>s
           </h1>

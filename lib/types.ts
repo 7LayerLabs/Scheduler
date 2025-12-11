@@ -16,6 +16,8 @@ export interface Employee {
   preferences: Preferences;
   minShiftsPerWeek?: number;
   restrictions?: EmployeeRestriction[]; // Time-based restrictions
+  permanentRules?: PermanentRule[];      // Recurring fixed schedules (e.g., "only works Sat 9am-12pm")
+  isActive?: boolean; // Default true, false = excluded from all scheduling
 }
 
 // Employee-specific scheduling restrictions
@@ -28,6 +30,23 @@ export interface EmployeeRestriction {
   days: DayOfWeek[];       // Which days this applies to (empty = all working days)
   reason?: string;         // e.g., "School pickup", "Second job"
 }
+
+// Permanent scheduling rules - recurring fixed shifts or constraints
+export interface PermanentRule {
+  id: string;
+  type: 'fixed_shift' | 'only_available' | 'never_schedule';
+  day: DayOfWeek;          // Single day (used for only_available, never_schedule)
+  days?: DayOfWeek[];      // Multiple days (used for fixed_shift - select multiple days)
+  startTime?: string;      // HH:MM format - required for fixed_shift and only_available
+  endTime?: string;        // HH:MM format - required for fixed_shift and only_available
+  reason?: string;         // e.g., "Second job", "School schedule", "Church"
+  isActive: boolean;       // Can be toggled on/off without deleting
+}
+
+// Global scheduling constants
+export const SCHEDULING_RULES = {
+  SERVER_MIN_SHIFT_HOURS: 3,  // Servers MUST work minimum 3 hour shifts
+} as const;
 
 export interface Availability {
   // Each day has available time slots

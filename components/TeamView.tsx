@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Employee, Availability, DayAvailability, EmployeeRestriction, DayOfWeek } from '@/lib/types';
+import { Employee, Availability, DayAvailability, EmployeeRestriction, PermanentRule, DayOfWeek } from '@/lib/types';
 
 interface Props {
   employees: Employee[];
@@ -12,6 +12,7 @@ interface Props {
 
 type SortField = 'name' | 'bartending' | 'alone' | 'minShifts' | 'status';
 type SortDirection = 'asc' | 'desc';
+type StatusFilter = 'all' | 'active' | 'inactive';
 
 export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, onRemoveEmployee }: Props) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -21,6 +22,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   // Edit form state
   const [editName, setEditName] = useState('');
@@ -29,6 +31,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
   const [editMinShifts, setEditMinShifts] = useState<number | undefined>(undefined);
   const [editAvailability, setEditAvailability] = useState<Availability | null>(null);
   const [editRestrictions, setEditRestrictions] = useState<EmployeeRestriction[]>([]);
+  const [editPermanentRules, setEditPermanentRules] = useState<PermanentRule[]>([]);
 
   type DayKey = 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
   type ShiftType = 'morning' | 'mid' | 'night' | 'any' | 'none';
@@ -55,6 +58,12 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
   // Filter and sort employees
   const filteredEmployees = employees
     .filter((emp) => emp.name.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter((emp) => {
+      if (statusFilter === 'all') return true;
+      if (statusFilter === 'active') return emp.isActive !== false;
+      if (statusFilter === 'inactive') return emp.isActive === false;
+      return true;
+    })
     .sort((a, b) => {
       let comparison = 0;
 
@@ -93,6 +102,8 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
       setEditAvailability(JSON.parse(JSON.stringify(selectedEmployee.availability)));
       // Deep clone restrictions
       setEditRestrictions(JSON.parse(JSON.stringify(selectedEmployee.restrictions || [])));
+      // Deep clone permanent rules
+      setEditPermanentRules(JSON.parse(JSON.stringify(selectedEmployee.permanentRules || [])));
       setIsEditing(true);
     }
   };
@@ -146,6 +157,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
         minShiftsPerWeek: editMinShifts,
         availability: editAvailability,
         restrictions: editRestrictions,
+        permanentRules: editPermanentRules,
       };
       onUpdateEmployee(updatedEmployee);
       setSelectedEmployee(updatedEmployee);
@@ -185,6 +197,50 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
     }));
   };
 
+  // Permanent rule management functions
+  const addPermanentRule = () => {
+    const newRule: PermanentRule = {
+      id: `rule-${Date.now()}`,
+      type: 'fixed_shift',
+      day: 'saturday',
+      days: ['saturday'],  // Initialize with single day for fixed_shift
+      startTime: '09:00',
+      endTime: '12:00',
+      reason: '',
+      isActive: true,
+    };
+    setEditPermanentRules([...editPermanentRules, newRule]);
+  };
+
+  const updatePermanentRule = (id: string, updates: Partial<PermanentRule>) => {
+    setEditPermanentRules(editPermanentRules.map(r =>
+      r.id === id ? { ...r, ...updates } : r
+    ));
+  };
+
+  const removePermanentRule = (id: string) => {
+    setEditPermanentRules(editPermanentRules.filter(r => r.id !== id));
+  };
+
+  const togglePermanentRuleActive = (id: string) => {
+    setEditPermanentRules(editPermanentRules.map(r =>
+      r.id === id ? { ...r, isActive: !r.isActive } : r
+    ));
+  };
+
+  const togglePermanentRuleDay = (ruleId: string, day: DayOfWeek) => {
+    setEditPermanentRules(editPermanentRules.map(r => {
+      if (r.id !== ruleId) return r;
+      const currentDays = r.days || [r.day];
+      const newDays = currentDays.includes(day)
+        ? currentDays.filter(d => d !== day)
+        : [...currentDays, day];
+      // Ensure at least one day is selected
+      if (newDays.length === 0) return r;
+      return { ...r, days: newDays, day: newDays[0] };
+    }));
+  };
+
   const cancelEditing = () => {
     setIsEditing(false);
   };
@@ -194,6 +250,20 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
       onRemoveEmployee(selectedEmployee.id);
       setSelectedEmployee(null);
       setShowDeleteConfirm(false);
+    }
+  };
+
+  // Toggle active status for an employee
+  const toggleActiveStatus = (emp: Employee, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation(); // Prevent row selection when clicking toggle
+    const updatedEmployee = {
+      ...emp,
+      isActive: emp.isActive === false ? true : false,
+    };
+    onUpdateEmployee(updatedEmployee);
+    // Update selected employee if it's the same one
+    if (selectedEmployee?.id === emp.id) {
+      setSelectedEmployee(updatedEmployee);
     }
   };
 
@@ -232,17 +302,28 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
         {/* Employee List */}
         <div className="lg:col-span-2 bg-[#1a1a1f] rounded-2xl border border-[#2a2a32] overflow-hidden hover:border-[#3a3a45] transition-colors duration-200">
-          {/* Search */}
+          {/* Search and Filter */}
           <div className="p-4 border-b border-[#2a2a32]">
-            <div className="relative">
-              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#6b6b75]" />
-              <input
-                type="text"
-                placeholder="Search team members..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-[#141417] border border-[#2a2a32] rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825] placeholder:text-[#6b6b75]"
-              />
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#6b6b75]" />
+                <input
+                  type="text"
+                  placeholder="Search team members..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-[#141417] border border-[#2a2a32] rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825] placeholder:text-[#6b6b75]"
+                />
+              </div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                className="px-3 py-2 bg-[#141417] border border-[#2a2a32] rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825]"
+              >
+                <option value="all">All ({employees.length})</option>
+                <option value="active">Active ({employees.filter(e => e.isActive !== false).length})</option>
+                <option value="inactive">Inactive ({employees.filter(e => e.isActive === false).length})</option>
+              </select>
             </div>
           </div>
 
@@ -255,31 +336,46 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                   setSelectedEmployee(emp);
                   setIsEditing(false);
                 }}
-                className={`p-4 cursor-pointer transition-colors ${selectedEmployee?.id === emp.id
+                className={`p-4 cursor-pointer transition-colors ${
+                  emp.isActive === false ? 'opacity-50' : ''
+                } ${selectedEmployee?.id === emp.id
                   ? 'bg-[#e5a825]/10'
                   : 'hover:bg-[#222228]'
                   }`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-[#a855f7] rounded-full flex items-center justify-center">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                      emp.isActive === false ? 'bg-[#3a3a45]' : 'bg-[#a855f7]'
+                    }`}>
                       <span className="text-white font-medium text-sm">
                         {emp.name.charAt(0)}
                       </span>
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-white">{emp.name}</p>
+                      <p className={`text-sm font-medium ${emp.isActive === false ? 'text-[#6b6b75]' : 'text-white'}`}>
+                        {emp.name}
+                        {emp.isActive === false && <span className="ml-2 text-xs text-[#ef4444]">(Inactive)</span>}
+                      </p>
                       <p className="text-xs text-[#6b6b75]">
                         {emp.bartendingScale >= 4 ? 'Bartender' : 'Server'}
                       </p>
                     </div>
                   </div>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${emp.exclusions.length > 0
-                    ? 'bg-[#e5a825]/10 text-[#e5a825] border border-[#e5a825]/30'
-                    : 'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
-                    }`}>
-                    {emp.exclusions.length > 0 ? 'Exclusions' : 'Available'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {/* Active/Inactive Toggle */}
+                    <button
+                      onClick={(e) => toggleActiveStatus(emp, e)}
+                      className={`relative w-10 h-5 rounded-full transition-colors ${
+                        emp.isActive !== false ? 'bg-[#22c55e]' : 'bg-[#3a3a45]'
+                      }`}
+                      title={emp.isActive !== false ? 'Click to deactivate' : 'Click to activate'}
+                    >
+                      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                        emp.isActive !== false ? 'left-5' : 'left-0.5'
+                      }`} />
+                    </button>
+                  </div>
                 </div>
                 <div className="mt-2 flex items-center gap-4 text-xs text-[#6b6b75]">
                   <span>Bar: {getSkillStars(emp.bartendingScale)}</span>
@@ -350,20 +446,27 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                       setSelectedEmployee(emp);
                       setIsEditing(false);
                     }}
-                    className={`cursor-pointer transition-colors ${selectedEmployee?.id === emp.id
+                    className={`cursor-pointer transition-colors ${
+                      emp.isActive === false ? 'opacity-50' : ''
+                    } ${selectedEmployee?.id === emp.id
                       ? 'bg-[#e5a825]/10'
                       : 'hover:bg-[#222228]'
                       }`}
                   >
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 bg-[#a855f7] rounded-full flex items-center justify-center">
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center ${
+                          emp.isActive === false ? 'bg-[#3a3a45]' : 'bg-[#a855f7]'
+                        }`}>
                           <span className="text-white font-medium text-sm">
                             {emp.name.charAt(0)}
                           </span>
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-white">{emp.name}</p>
+                          <p className={`text-sm font-medium ${emp.isActive === false ? 'text-[#6b6b75]' : 'text-white'}`}>
+                            {emp.name}
+                            {emp.isActive === false && <span className="ml-2 text-xs text-[#ef4444]">(Inactive)</span>}
+                          </p>
                           <p className="text-xs text-[#6b6b75]">
                             {emp.bartendingScale >= 4 ? 'Bartender' : 'Server'}
                           </p>
@@ -380,12 +483,20 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                       <span className="text-sm text-white">{emp.minShiftsPerWeek || '-'}</span>
                     </td>
                     <td className="py-3 px-4 text-right">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${emp.exclusions.length > 0
-                        ? 'bg-[#e5a825]/10 text-[#e5a825] border border-[#e5a825]/30'
-                        : 'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
-                        }`}>
-                        {emp.exclusions.length > 0 ? 'Has exclusions' : 'Available'}
-                      </span>
+                      <div className="flex items-center justify-end gap-3">
+                        {/* Active/Inactive Toggle */}
+                        <button
+                          onClick={(e) => toggleActiveStatus(emp, e)}
+                          className={`relative w-10 h-5 rounded-full transition-colors ${
+                            emp.isActive !== false ? 'bg-[#22c55e]' : 'bg-[#3a3a45]'
+                          }`}
+                          title={emp.isActive !== false ? 'Click to deactivate' : 'Click to activate'}
+                        >
+                          <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                            emp.isActive !== false ? 'left-5' : 'left-0.5'
+                          }`} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -578,7 +689,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                             </div>
                             {r.days.length > 0 && (
                               <div className="text-xs text-[#6b6b75] mt-1">
-                                {r.days.map(d => d.charAt(0).toUpperCase() + d.slice(0, 2)).join(', ')}
+                                {r.days.map(d => d.charAt(0).toUpperCase() + d.slice(1, 3)).join(', ')}
                               </div>
                             )}
                             {r.days.length === 0 && (
@@ -732,6 +843,166 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                           value={r.reason || ''}
                           onChange={(e) => updateRestriction(r.id, { reason: e.target.value })}
                           className="w-full px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#e5a825]/40 placeholder:text-[#6b6b75]"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Permanent Rules - View Mode */}
+              {!isEditing && (
+                <div className="mb-6">
+                  <h4 className="text-sm font-medium text-white mb-2">Permanent Rules</h4>
+                  {(!selectedEmployee.permanentRules || selectedEmployee.permanentRules.length === 0) ? (
+                    <p className="text-xs text-[#6b6b75]">No permanent rules set</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {selectedEmployee.permanentRules.filter(r => r.isActive).map((r) => {
+                        // Format days for display
+                        const displayDays = r.type === 'fixed_shift' && r.days && r.days.length > 0
+                          ? r.days.map(d => d.charAt(0).toUpperCase() + d.slice(1, 3)).join(', ')
+                          : r.day.charAt(0).toUpperCase() + r.day.slice(1);
+
+                        return (
+                          <div key={r.id} className="p-2 bg-[#141417] rounded-lg border border-[#22c55e]/30">
+                            <div className="text-xs text-[#22c55e] font-medium">
+                              {r.type === 'fixed_shift' && `Fixed: ${displayDays} ${r.startTime}-${r.endTime}`}
+                              {r.type === 'only_available' && `Only available: ${displayDays} ${r.startTime}-${r.endTime}`}
+                              {r.type === 'never_schedule' && `Never schedule: ${displayDays}`}
+                            </div>
+                            {r.reason && <div className="text-xs text-[#a0a0a8] mt-1">{r.reason}</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Permanent Rules - Edit Mode */}
+              {isEditing && (
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-medium text-white">Permanent Rules</h4>
+                    <button
+                      type="button"
+                      onClick={addPermanentRule}
+                      className="text-xs text-[#22c55e] hover:text-[#4ade80] font-medium"
+                    >
+                      + Add Rule
+                    </button>
+                  </div>
+                  <p className="text-xs text-[#6b6b75] mb-3">
+                    Set fixed recurring schedules (e.g., &quot;Only works Saturday 9am-12pm&quot;)
+                  </p>
+                  {editPermanentRules.length === 0 && (
+                    <p className="text-xs text-[#6b6b75]">No permanent rules set</p>
+                  )}
+                  <div className="space-y-3">
+                    {editPermanentRules.map((r) => (
+                      <div key={r.id} className={`p-3 bg-[#141417] rounded-lg border ${r.isActive ? 'border-[#22c55e]/30' : 'border-[#3a3a45] opacity-50'}`}>
+                        {/* Rule Header with Toggle and Delete */}
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => togglePermanentRuleActive(r.id)}
+                              className={`relative w-8 h-4 rounded-full transition-colors ${
+                                r.isActive ? 'bg-[#22c55e]' : 'bg-[#3a3a45]'
+                              }`}
+                              title={r.isActive ? 'Click to disable' : 'Click to enable'}
+                            >
+                              <span className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                                r.isActive ? 'left-4' : 'left-0.5'
+                              }`} />
+                            </button>
+                            <span className="text-xs text-[#6b6b75]">{r.isActive ? 'Active' : 'Inactive'}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removePermanentRule(r.id)}
+                            className="p-1 text-[#ef4444] hover:bg-[#ef4444]/10 rounded"
+                          >
+                            <TrashIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Rule Type */}
+                        <div className="mb-2">
+                          <select
+                            value={r.type}
+                            onChange={(e) => updatePermanentRule(r.id, { type: e.target.value as PermanentRule['type'] })}
+                            className="w-full px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#22c55e]/40"
+                          >
+                            <option value="fixed_shift">Fixed Shift (always schedule this time)</option>
+                            <option value="only_available">Only Available (can ONLY work this time)</option>
+                            <option value="never_schedule">Never Schedule (never work this day)</option>
+                          </select>
+                        </div>
+
+                        {/* Day Selection - Multi-select for fixed_shift, single for others */}
+                        <div className="mb-2">
+                          <div className="text-xs text-[#6b6b75] mb-1">
+                            {r.type === 'fixed_shift' ? 'Days (select multiple):' : 'Day:'}
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {(['tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as DayOfWeek[]).map((day) => {
+                              // For fixed_shift, use multi-select with days array
+                              const isSelected = r.type === 'fixed_shift'
+                                ? (r.days || [r.day]).includes(day)
+                                : r.day === day;
+
+                              return (
+                                <button
+                                  key={day}
+                                  type="button"
+                                  onClick={() => {
+                                    if (r.type === 'fixed_shift') {
+                                      togglePermanentRuleDay(r.id, day);
+                                    } else {
+                                      updatePermanentRule(r.id, { day });
+                                    }
+                                  }}
+                                  className={`px-2 py-0.5 text-xs rounded font-medium transition-colors ${
+                                    isSelected
+                                      ? 'bg-[#22c55e] text-white'
+                                      : 'bg-[#2a2a32] text-[#6b6b75] hover:bg-[#3a3a45]'
+                                  }`}
+                                >
+                                  {day.charAt(0).toUpperCase() + day.slice(1, 3)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Time Range (for fixed_shift and only_available) */}
+                        {r.type !== 'never_schedule' && (
+                          <div className="flex items-center gap-2 mb-2">
+                            <input
+                              type="time"
+                              value={r.startTime || ''}
+                              onChange={(e) => updatePermanentRule(r.id, { startTime: e.target.value })}
+                              className="flex-1 px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#22c55e]/40"
+                            />
+                            <span className="text-xs text-[#6b6b75]">to</span>
+                            <input
+                              type="time"
+                              value={r.endTime || ''}
+                              onChange={(e) => updatePermanentRule(r.id, { endTime: e.target.value })}
+                              className="flex-1 px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#22c55e]/40"
+                            />
+                          </div>
+                        )}
+
+                        {/* Reason */}
+                        <input
+                          type="text"
+                          placeholder="Reason (e.g., Second job, School)"
+                          value={r.reason || ''}
+                          onChange={(e) => updatePermanentRule(r.id, { reason: e.target.value })}
+                          className="w-full px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#22c55e]/40 placeholder:text-[#6b6b75]"
                         />
                       </div>
                     ))}

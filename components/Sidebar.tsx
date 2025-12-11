@@ -65,13 +65,11 @@ export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager',
   // Base nav items for all users
   const baseNavItems = [
     { id: 'schedule', label: 'Schedule', icon: CalendarIcon },
-    { id: 'notes-staffing', label: 'Notes & Staffing', icon: NotesIcon },
     { id: 'team', label: 'Team', icon: UsersIcon },
   ];
 
-  // Manager-only items
+  // Manager-only items (Users is now inside Settings)
   const managerNavItems = [
-    { id: 'users', label: 'Users', icon: UserGroupIcon },
     { id: 'settings', label: 'Settings', icon: SettingsIcon },
   ];
 
@@ -137,6 +135,7 @@ export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager',
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 sm:w-11 sm:h-11 bg-[#e5a825] rounded-xl flex items-center justify-center shadow-lg shadow-[#e5a825]/20 transform hover:scale-105 transition-transform overflow-hidden">
                 {logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
                 ) : (
                   <span className="text-[#0d0d0f] font-bold text-lg sm:text-xl">B</span>

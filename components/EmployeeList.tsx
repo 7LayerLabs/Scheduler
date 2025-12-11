@@ -1,10 +1,6 @@
 'use client';
 
 import {
-  UserCircleIcon,
-  TrashIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
   ClockIcon,
   XMarkIcon,
   PlusIcon
@@ -19,7 +15,7 @@ interface Props {
   onUpdateEmployee: (employee: Employee) => void;
 }
 
-export default function EmployeeList({ employees, onAddEmployee, onRemoveEmployee, onUpdateEmployee }: Props) {
+export default function EmployeeList({ employees, onUpdateEmployee }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const sortedEmployees = [...employees].sort((a, b) => {
@@ -145,8 +141,8 @@ export default function EmployeeList({ employees, onAddEmployee, onRemoveEmploye
 
                             if (daySelect && shiftSelect) {
                               const newSchedule = {
-                                day: daySelect.value as any,
-                                shiftType: shiftSelect.value as any,
+                                day: daySelect.value as 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday',
+                                shiftType: shiftSelect.value as 'morning' | 'night',
                                 startTime: startInput.value || undefined,
                                 endTime: endInput.value || undefined,
                               };

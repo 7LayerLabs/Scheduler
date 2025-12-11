@@ -1,12 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Employee, WeeklySchedule, LockedShift, DayOfWeek, ScheduleOverride, WeeklyStaffingNeeds } from '@/lib/types';
-
-// Store custom times from overrides for display
-interface CustomTimeMap {
-  [key: string]: { start: string; end: string }; // key = `${employeeId}-${day}`
-}
 import { parseScheduleNotes, formatParsedOverrides } from '@/lib/parseNotes';
 
 interface Props {
@@ -30,7 +25,6 @@ interface Props {
   notes: string;
   setNotes: (notes: string) => void;
   overrides: ScheduleOverride[];
-  setOverrides: (overrides: ScheduleOverride[]) => void;
   staffingNeeds: WeeklyStaffingNeeds;
   // Week-specific rules (optional - may not be passed initially)
   weekLockedRules?: ScheduleOverride[];
@@ -59,7 +53,6 @@ export default function ScheduleView({
   setLockedShifts,
   notes,
   setNotes,
-  setOverrides,
   staffingNeeds,
   weekLockedRules,
   setWeekLockedRules,
@@ -70,14 +63,46 @@ export default function ScheduleView({
   permanentRulesDisplay,
   setPermanentRulesDisplay,
 }: Props) {
-  const [parsedPreview, setParsedPreview] = useState<string[]>([]);
-  const [parsedRules, setParsedRules] = useState<ScheduleOverride[]>([]);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  // Local state for notes to handle clearing immediately
+  const [localNotes, setLocalNotes] = useState(notes);
+  const justClearedRef = useRef(false);
+
+  // Sync local notes when DB notes change (e.g., when switching weeks)
+  // But skip if we just cleared notes locally
+  useEffect(() => {
+    if (justClearedRef.current) {
+      justClearedRef.current = false;
+      return;
+    }
+    // This is intentional - syncing from external source (DB) to local state
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLocalNotes(notes);
+  }, [notes]);
+
+  // Handle notes change - update both local state and DB
+  const handleNotesChange = (newNotes: string) => {
+    setLocalNotes(newNotes);
+    setNotes(newNotes);
+  };
+
+  // Derive parsed preview and rules from localNotes using useMemo (no setState in effects)
+  const { parsedPreview, parsedRules } = useMemo(() => {
+    if (localNotes.trim()) {
+      const parsed = parseScheduleNotes(localNotes, employees);
+      const formatted = formatParsedOverrides(parsed, employees);
+      return { parsedPreview: formatted, parsedRules: parsed };
+    }
+    return { parsedPreview: [], parsedRules: [] };
+  }, [localNotes, employees]);
 
   // Format time to 12h format
   const formatTime12h = (time: string): string => {
     if (!time) return '';
-    const [hours, minutes] = time.split(':').map(Number);
+    const parts = time.split(':');
+    const hours = parseInt(parts[0]) || 0;
+    const minutes = parseInt(parts[1]) || 0;
     const period = hours >= 12 ? 'PM' : 'AM';
     let hour12 = hours % 12;
     if (hour12 === 0) hour12 = 12;
@@ -133,8 +158,6 @@ export default function ScheduleView({
     }
 
     // Build HTML table cells for each day
-    const maxRows = Math.max(...scheduleDays.map(d => assignmentsByDay[d].length), 1);
-
     let tableContent = '';
     for (const day of scheduleDays) {
       const dayAssignments = assignmentsByDay[day];
@@ -324,19 +347,6 @@ export default function ScheduleView({
     }
   };
 
-  // Parse notes as user types (preview only - user must click button to apply)
-  useEffect(() => {
-    if (notes.trim()) {
-      const parsed = parseScheduleNotes(notes, employees, weekStart);
-      const formatted = formatParsedOverrides(parsed, employees);
-      setParsedPreview(formatted);
-      setParsedRules(parsed);
-    } else {
-      setParsedPreview([]);
-      setParsedRules([]);
-    }
-  }, [notes, employees, weekStart]);
-
   // Ensure arrays are never undefined
   const safeWeekLockedRules = weekLockedRules || [];
   const safeWeekLockedRulesDisplay = weekLockedRulesDisplay || [];
@@ -350,10 +360,10 @@ export default function ScheduleView({
       const newDisplay = [...safeWeekLockedRulesDisplay, ...parsedPreview];
       setWeekLockedRules(newRules);
       setWeekLockedRulesDisplay(newDisplay);
-      // Clear input after applying
+      // Clear input after applying - set flag to prevent re-sync from DB
+      justClearedRef.current = true;
+      setLocalNotes('');
       setNotes('');
-      setParsedPreview([]);
-      setParsedRules([]);
     }
   };
 
@@ -364,10 +374,10 @@ export default function ScheduleView({
       const newDisplay = [...safePermanentRulesDisplay, ...parsedPreview];
       setPermanentRules(newRules);
       setPermanentRulesDisplay(newDisplay);
-      // Clear input after applying
+      // Clear input after applying - set flag to prevent re-sync from DB
+      justClearedRef.current = true;
+      setLocalNotes('');
       setNotes('');
-      setParsedPreview([]);
-      setParsedRules([]);
     }
   };
 
@@ -525,12 +535,26 @@ export default function ScheduleView({
         <div className="flex flex-col lg:flex-row lg:items-start gap-4">
           {/* Left: Input */}
           <div className="flex-1">
-            <label className="block text-sm font-semibold text-[#a0a0a8] mb-2">
-              Week Notes <span className="text-[#6b6b75] font-normal">({formatWeekRange(weekStart).split(',')[0]})</span>
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-semibold text-[#a0a0a8]">
+                Week Notes <span className="text-[#6b6b75] font-normal">({formatWeekRange(weekStart).split(',')[0]})</span>
+              </label>
+              {localNotes.trim() && (
+                <button
+                  onClick={() => {
+                    justClearedRef.current = true;
+                    setLocalNotes('');
+                    setNotes('');
+                  }}
+                  className="text-xs text-[#ef4444] hover:text-[#f87171] transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
             <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              value={localNotes}
+              onChange={(e) => handleNotesChange(e.target.value)}
               placeholder="e.g., December 24 closing at 2pm, December 25 CLOSED, [Name] opens Saturday, [Name] off Tuesday..."
               className="w-full h-20 p-3 bg-[#141417] border border-[#2a2a32] rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825] resize-none transition-all duration-200 placeholder:text-[#6b6b75]"
             />
@@ -859,58 +883,6 @@ function formatTime(time24: string): string {
   return `${hour12}:${minutes.toString().padStart(2, '0')}${period}`;
 }
 
-// Get employee's actual shift times based on their availability
-function getEmployeeShiftTimes(
-  employee: Employee,
-  day: string,
-  shiftType: 'morning' | 'night'
-): { start: string; end: string } {
-  const dayMap: Record<string, string> = {
-    Tue: 'tuesday',
-    Wed: 'wednesday',
-    Thu: 'thursday',
-    Fri: 'friday',
-    Sat: 'saturday',
-    Sun: 'sunday',
-  };
-
-  const dayKey = dayMap[day] as keyof typeof employee.availability;
-  const dayAvail = employee.availability[dayKey];
-
-  // Default shift times
-  const defaults: Record<string, Record<string, { start: string; end: string }>> = {
-    Tue: { morning: { start: '7:15', end: '2' }, night: { start: '4', end: '9' } },
-    Wed: { morning: { start: '7:15', end: '2' }, night: { start: '4', end: '9' } },
-    Thu: { morning: { start: '7:15', end: '2' }, night: { start: '4', end: '9' } },
-    Fri: { morning: { start: '7:15', end: '2' }, night: { start: '4', end: '9' } },
-    Sat: { morning: { start: '7:15', end: '3' }, night: { start: '3', end: '9' } },
-    Sun: { morning: { start: '7:15', end: '2:30' }, night: { start: '', end: '' } },
-  };
-
-  let start = defaults[day]?.[shiftType]?.start || '';
-  let end = defaults[day]?.[shiftType]?.end || '';
-
-  if (dayAvail && 'available' in dayAvail && dayAvail.available) {
-    // Find matching shift in their availability
-    for (const shift of dayAvail.shifts) {
-      const matchesMorning = shiftType === 'morning' && (shift.type === 'morning' || shift.type === 'any');
-      const matchesNight = shiftType === 'night' && (shift.type === 'night' || shift.type === 'any');
-
-      if (matchesMorning || matchesNight) {
-        if (shift.startTime) {
-          start = formatTime(shift.startTime);
-        }
-        if (shift.endTime) {
-          end = formatTime(shift.endTime);
-        }
-        break;
-      }
-    }
-  }
-
-  return { start, end };
-}
-
 // Schedule Grid Component
 function ScheduleGrid({
   schedule,
@@ -918,9 +890,6 @@ function ScheduleGrid({
   lockedShifts,
   onToggleLock,
   employees,
-  staffingNeeds,
-  overrides,
-  onSwapAssignments,
   onUpdateSchedule,
 }: {
   schedule: WeeklySchedule;
@@ -981,6 +950,15 @@ function ScheduleGrid({
       a.date === getDateStringForDay(dayFull)
     );
     return assignments;
+  };
+
+  // Determine shift type based on start time: before 10 = morning, 10-16 = mid, 16+ = dinner/night
+  const getShiftTypeFromTime = (startTime?: string): 'morning' | 'mid' | 'night' => {
+    if (!startTime) return 'morning';
+    const hour = parseInt(startTime.split(':')[0]);
+    if (hour < 10) return 'morning';
+    if (hour < 16) return 'mid';
+    return 'night';
   };
 
   const getShiftType = (shiftId: string): 'morning' | 'night' => {
@@ -1123,8 +1101,16 @@ function ScheduleGrid({
                       <div className="space-y-1">
                         {assignments.map((a, i) => {
                           const shiftType = getShiftType(a.shiftId);
+                          const shiftTypeByTime = getShiftTypeFromTime(a.startTime);
                           const locked = isLocked(emp.id, dayFull, shiftType);
                           const isDragging = draggedItem?.employeeId === emp.id && draggedItem?.day === dayFull;
+
+                          // Colors: morning = orange, mid = green, night/dinner = red
+                          const shiftColorClass = shiftTypeByTime === 'night'
+                            ? 'bg-[#ef4444]/20 text-[#ef4444] border border-[#ef4444]/30' // red for dinner
+                            : shiftTypeByTime === 'mid'
+                              ? 'bg-[#22c55e]/20 text-[#22c55e] border border-[#22c55e]/30' // green for mid
+                              : 'bg-[#f97316]/20 text-[#f97316] border border-[#f97316]/30'; // orange for morning
 
                           return (
                             <div
@@ -1134,10 +1120,7 @@ function ScheduleGrid({
                               onDragEnd={handleDragEnd}
                               className={`relative text-sm py-1 px-2 rounded-md font-medium cursor-grab active:cursor-grabbing transition-all ${locked ? 'ring-2 ring-[#e5a825]' : ''
                                 } ${isDragging ? 'opacity-50 scale-95' : ''
-                                } ${shiftType === 'night' ? 'bg-[#a855f7]/20 text-[#a855f7] border border-[#a855f7]/30' :
-                                  a.shiftId.includes('mid') ? 'bg-[#3b82f6]/20 text-[#3b82f6] border border-[#3b82f6]/30' :
-                                    'bg-[#e5a825]/20 text-[#e5a825] border border-[#e5a825]/30'
-                                }`}
+                                } ${shiftColorClass}`}
                             >
                               {a.startTime && a.endTime ? (
                                 <span>{formatTime(a.startTime)} - {formatTime(a.endTime)}</span>
@@ -1204,141 +1187,6 @@ function EmptyState({ onGenerate }: { onGenerate: () => void }) {
   );
 }
 
-// Notes Panel Component
-function NotesPanel({
-  notes,
-  setNotes,
-  parsedPreview,
-}: {
-  notes: string;
-  setNotes: (notes: string) => void;
-  parsedPreview: string[];
-}) {
-  return (
-    <div className="grid grid-cols-2 gap-6">
-      <div>
-        <label className="block text-sm font-medium text-[#a0a0a8] mb-2">
-          Scheduling Instructions
-        </label>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Type natural language instructions...
-
-Examples:
-- Kim opens Saturday
-- Kris Ann off Tuesday
-- Ali works Friday night
-- Heidi Wed thru Fri morning"
-          className="w-full h-64 p-4 bg-[#141417] border border-[#2a2a32] rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825] focus:border-transparent resize-none placeholder:text-[#6b6b75]"
-        />
-        <p className="text-xs text-[#6b6b75] mt-2">
-          Keywords: &quot;opens&quot;, &quot;off&quot;, &quot;night&quot;, &quot;morning&quot;, &quot;prefers&quot;, &quot;closing&quot;, &quot;works&quot; - Nicknames work too (Chris = Kris Ann, Hales = Haley, etc.)
-        </p>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-[#a0a0a8] mb-2">
-          Parsed Rules {parsedPreview.length > 0 && `(${parsedPreview.length})`}
-        </label>
-        <div className="h-64 bg-[#141417] border border-[#2a2a32] rounded-lg p-4 overflow-y-auto">
-          {parsedPreview.length > 0 ? (
-            <div className="space-y-2">
-              {parsedPreview.map((text, idx) => (
-                <div
-                  key={idx}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium ${text.startsWith('Y')
-                    ? 'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
-                    : text.startsWith('X')
-                      ? 'bg-[#ef4444]/10 text-[#ef4444] border border-[#ef4444]/30'
-                      : 'bg-[#3b82f6]/10 text-[#3b82f6] border border-[#3b82f6]/30'
-                    }`}
-                >
-                  {text}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="h-full flex items-center justify-center text-sm text-[#6b6b75]">
-              Rules will appear here as you type
-            </div>
-          )}
-        </div>
-        {parsedPreview.length > 0 && (
-          <p className="text-xs text-[#22c55e] mt-2 flex items-center gap-1">
-            <CheckIcon className="w-3 h-3" />
-            Click &quot;Regenerate&quot; to apply these rules
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Staffing Needs Editor Component (Simplified for slots view)
-function StaffingNeedsEditor({
-  staffingNeeds,
-}: {
-  staffingNeeds: WeeklyStaffingNeeds;
-  setStaffingNeeds: (needs: WeeklyStaffingNeeds) => void;
-}) {
-  const days: { key: keyof WeeklyStaffingNeeds; label: string; fullLabel: string }[] = [
-    { key: 'tuesday', label: 'Tue', fullLabel: 'Tuesday' },
-    { key: 'wednesday', label: 'Wed', fullLabel: 'Wednesday' },
-    { key: 'thursday', label: 'Thu', fullLabel: 'Thursday' },
-    { key: 'friday', label: 'Fri', fullLabel: 'Friday' },
-    { key: 'saturday', label: 'Sat', fullLabel: 'Saturday' },
-    { key: 'sunday', label: 'Sun', fullLabel: 'Sunday' },
-  ];
-
-  const getTotalSlots = () => {
-    return Object.values(staffingNeeds).reduce((sum, day) => sum + (day.slots?.length || 0), 0);
-  };
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <h3 className="text-lg font-medium text-white mb-2">Weekly Staffing Slots</h3>
-        <p className="text-sm text-[#6b6b75] mb-4">
-          View time slots for each day. Use the <span className="font-medium">Staffing</span> tab to edit slots and add notes.
-        </p>
-      </div>
-
-      {/* Slots Summary Grid */}
-      <div className="grid grid-cols-6 gap-3">
-        {days.map(({ key, label }) => {
-          const slots = staffingNeeds[key]?.slots || [];
-          const notes = staffingNeeds[key]?.notes;
-          return (
-            <div key={key} className="bg-[#141417] rounded-lg p-3 text-center border border-[#2a2a32]">
-              <div className="text-xs font-medium text-[#6b6b75] mb-1">{label}</div>
-              <div className="text-xl font-bold text-white">{slots.length}</div>
-              <div className="text-xs text-[#6b6b75]">slot{slots.length !== 1 ? 's' : ''}</div>
-              {notes && (
-                <div className="mt-1 text-xs text-[#e5a825]" title={notes}>
-                  Note
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Summary */}
-      <div className="p-4 bg-[#141417] rounded-lg border border-[#2a2a32]">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-[#a0a0a8]">Total Slots</span>
-          <span className="text-sm text-white font-semibold">{getTotalSlots()} time slots</span>
-        </div>
-      </div>
-
-      <p className="text-xs text-[#6b6b75]">
-        Go to the Staffing tab to configure individual time slots and add scheduling notes.
-      </p>
-    </div>
-  );
-}
-
 // Icon Components
 function LoadingSpinner() {
   return (
@@ -1349,14 +1197,6 @@ function LoadingSpinner() {
         fill="currentColor"
         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
       />
-    </svg>
-  );
-}
-
-function PlusIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
     </svg>
   );
 }
@@ -1441,26 +1281,10 @@ function LockClosedIcon({ className }: { className?: string }) {
   );
 }
 
-function LockOpenIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-    </svg>
-  );
-}
-
 function TrashIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-    </svg>
-  );
-}
-
-function GripIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
     </svg>
   );
 }

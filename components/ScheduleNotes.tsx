@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import { Employee, ScheduleOverride } from '@/lib/types';
 import { parseScheduleNotes, formatParsedOverrides } from '@/lib/parseNotes';
 
@@ -19,21 +19,25 @@ export default function ScheduleNotes({
   overrides,
   setOverrides,
 }: Props) {
-  const [parsedPreview, setParsedPreview] = useState<string[]>([]);
-
-  // Parse notes as user types
-  useEffect(() => {
+  // Derive parsed preview from notes using useMemo (no setState in effects)
+  const parsedPreview = useMemo(() => {
     if (notes.trim()) {
       const parsed = parseScheduleNotes(notes);
-      const formatted = formatParsedOverrides(parsed);
-      setParsedPreview(formatted);
-      // Update overrides state with parsed results
+      return formatParsedOverrides(parsed);
+    }
+    return [];
+  }, [notes]);
+
+  // Handle notes change - update both notes and overrides together
+  const handleNotesChange = (newNotes: string) => {
+    setNotes(newNotes);
+    if (newNotes.trim()) {
+      const parsed = parseScheduleNotes(newNotes);
       setOverrides(parsed);
     } else {
-      setParsedPreview([]);
       setOverrides([]);
     }
-  }, [notes, setOverrides]);
+  };
 
   const getOverrideColor = (text: string) => {
     if (text.startsWith('✓')) return 'bg-green-100 border-green-300 text-green-800';
@@ -56,7 +60,7 @@ export default function ScheduleNotes({
         </label>
         <textarea
           value={notes}
-          onChange={(e) => setNotes(e.target.value)}
+          onChange={(e) => handleNotesChange(e.target.value)}
           placeholder="Examples:
 • Kim opens Saturday
 • Kris Ann off Tuesday

@@ -61,6 +61,8 @@ export interface DBEmployee {
   preferences: string; // JSON stringified
   minShiftsPerWeek?: number;
   restrictions?: string; // JSON stringified
+  permanentRules?: string; // JSON stringified PermanentRule[]
+  isActive?: boolean; // Default true, false = excluded from scheduling
   createdAt: number;
   updatedAt: number;
 }
@@ -288,6 +290,8 @@ function employeeToDBEmployee(emp: Employee): Omit<DBEmployee, 'id' | 'createdAt
     preferences: JSON.stringify(emp.preferences),
     minShiftsPerWeek: emp.minShiftsPerWeek,
     restrictions: emp.restrictions ? JSON.stringify(emp.restrictions) : undefined,
+    permanentRules: emp.permanentRules ? JSON.stringify(emp.permanentRules) : undefined,
+    isActive: emp.isActive,
   };
 }
 
@@ -304,6 +308,8 @@ function dbEmployeeToEmployee(dbEmp: DBEmployee): Employee {
     preferences: JSON.parse(dbEmp.preferences),
     minShiftsPerWeek: dbEmp.minShiftsPerWeek,
     restrictions: dbEmp.restrictions ? JSON.parse(dbEmp.restrictions) : undefined,
+    permanentRules: dbEmp.permanentRules ? JSON.parse(dbEmp.permanentRules) : undefined,
+    isActive: dbEmp.isActive !== false, // Default to true if not set
   };
 }
 
@@ -318,7 +324,11 @@ export function useEmployees() {
 
 // Create a new employee
 export async function createEmployee(emp: Employee) {
-  const empId = emp.id || id();
+  // Check if employee with same name already exists
+  const result = await db.queryOnce({ employees: { $: { where: { name: emp.name } } } });
+  const existing = result.data?.employees?.[0] as { id: string } | undefined;
+  const empId = existing?.id || id();
+
   const dbEmp = employeeToDBEmployee(emp);
   await db.transact(
     tx.employees[empId].update({
@@ -333,6 +343,7 @@ export async function createEmployee(emp: Employee) {
 // Update an existing employee
 export async function updateEmployee(emp: Employee) {
   const dbEmp = employeeToDBEmployee(emp);
+  // Use lookup by name for deterministic UUID - emp.id should be a valid UUID from InstantDB
   await db.transact(
     tx.employees[emp.id].update({
       ...dbEmp,
@@ -347,17 +358,11 @@ export async function deleteEmployee(employeeId: string) {
 }
 
 // Bulk create employees (for migration)
-export async function bulkCreateEmployees(employees: Employee[]) {
-  const transactions = employees.map(emp => {
-    const empId = emp.id || id();
-    const dbEmp = employeeToDBEmployee(emp);
-    return tx.employees[empId].update({
-      ...dbEmp,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-  });
-  await db.transact(transactions);
+export async function bulkCreateEmployees(employeeList: Employee[]) {
+  // Create each employee one at a time to ensure proper UUID generation
+  for (const emp of employeeList) {
+    await createEmployee(emp);
+  }
 }
 
 // ============================================
@@ -385,7 +390,11 @@ export function useAppSettings() {
 // Update logo URL
 export async function updateLogoUrl(logoUrl: string | null) {
   try {
-    const settingsId = 'main-settings';
+    // Query for existing settings first
+    const result = await db.queryOnce({ appSettings: { $: { where: { key: 'main' } } } });
+    const existing = result.data?.appSettings?.[0] as { id: string } | undefined;
+    const settingsId = existing?.id || id();
+
     await db.transact(
       tx.appSettings[settingsId].update({
         key: 'main',
@@ -402,7 +411,11 @@ export async function updateLogoUrl(logoUrl: string | null) {
 
 // Update default staffing template
 export async function updateDefaultStaffingTemplate(template: WeeklyStaffingNeeds) {
-  const settingsId = 'main-settings';
+  // Query for existing settings first
+  const result = await db.queryOnce({ appSettings: { $: { where: { key: 'main' } } } });
+  const existing = result.data?.appSettings?.[0] as { id: string } | undefined;
+  const settingsId = existing?.id || id();
+
   await db.transact(
     tx.appSettings[settingsId].update({
       key: 'main',
@@ -435,7 +448,11 @@ export function useWeeklyStaffing() {
 
 // Update staffing for a specific week
 export async function updateWeeklyStaffing(weekKey: string, staffingNeeds: WeeklyStaffingNeeds, notes?: string) {
-  const staffingId = `staffing-${weekKey}`;
+  // Query for existing record first
+  const result = await db.queryOnce({ weeklyStaffing: { $: { where: { weekKey } } } });
+  const existing = result.data?.weeklyStaffing?.[0] as { id: string } | undefined;
+  const staffingId = existing?.id || id();
+
   await db.transact(
     tx.weeklyStaffing[staffingId].update({
       weekKey,
@@ -466,7 +483,11 @@ export function usePermanentRules() {
 
 // Update permanent rules
 export async function updatePermanentRules(rules: ScheduleOverride[], rulesDisplay: string[]) {
-  const rulesId = 'permanent-rules';
+  // Query for existing record first
+  const result = await db.queryOnce({ permanentRules: {} });
+  const existing = result.data?.permanentRules?.[0] as { id: string } | undefined;
+  const rulesId = existing?.id || id();
+
   await db.transact(
     tx.permanentRules[rulesId].update({
       rules: JSON.stringify(rules),
@@ -493,7 +514,11 @@ export function useWeeklyRules() {
 
 // Update rules for a specific week
 export async function updateWeeklyRulesForWeek(weekKey: string, rules: ScheduleOverride[], rulesDisplay: string[]) {
-  const rulesId = `rules-${weekKey}`;
+  // Query for existing record first
+  const result = await db.queryOnce({ weeklyRules: { $: { where: { weekKey } } } });
+  const existing = result.data?.weeklyRules?.[0] as { id: string } | undefined;
+  const rulesId = existing?.id || id();
+
   await db.transact(
     tx.weeklyRules[rulesId].update({
       weekKey,

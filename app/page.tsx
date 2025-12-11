@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { generateSchedule } from '@/lib/scheduler';
+import { parseScheduleNotes } from '@/lib/parseNotes';
 import { employees as initialEmployees } from '@/lib/employees';
 import { Employee, WeeklySchedule, ScheduleOverride, LockedShift, WeeklyStaffingNeeds } from '@/lib/types';
 import {
@@ -41,15 +42,14 @@ export default function Home() {
   const { isLoading: authLoading, user: authUser, error: authError } = db.useAuth();
   const { profile: userProfile, isLoading: profileLoading } = useCurrentUser();
   const { isFirstUser, isLoading: checkingFirstUser } = useIsFirstUser();
-  const [showLogin, setShowLogin] = useState(false);
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
 
   // InstantDB data hooks
   const { employees: dbEmployees, isLoading: employeesLoading } = useEmployees();
-  const { logoUrl: dbLogoUrl, defaultStaffingTemplate: dbDefaultTemplate, isLoading: settingsLoading } = useAppSettings();
-  const { staffingByWeek: dbStaffingByWeek, notesByWeek: dbNotesByWeek, isLoading: staffingLoading } = useWeeklyStaffing();
-  const { rules: dbPermanentRules, rulesDisplay: dbPermanentRulesDisplay, isLoading: permanentRulesLoading } = usePermanentRules();
-  const { rulesByWeek: dbRulesByWeek, displayByWeek: dbDisplayByWeek, isLoading: weeklyRulesLoading } = useWeeklyRules();
+  const { logoUrl: dbLogoUrl, defaultStaffingTemplate: dbDefaultTemplate } = useAppSettings();
+  const { staffingByWeek: dbStaffingByWeek, notesByWeek: dbNotesByWeek } = useWeeklyStaffing();
+  const { rules: dbPermanentRules, rulesDisplay: dbPermanentRulesDisplay } = usePermanentRules();
+  const { rulesByWeek: dbRulesByWeek, displayByWeek: dbDisplayByWeek } = useWeeklyRules();
 
   // Migration state
   const [hasMigrated, setHasMigrated] = useState(false);
@@ -101,8 +101,6 @@ export default function Home() {
   };
 
   // Weekly rules from InstantDB
-  const weeklyLockedRules = dbRulesByWeek;
-  const weeklyLockedRulesDisplay = dbDisplayByWeek;
   const weekLockedRules = dbRulesByWeek[currentWeekKey] || [];
   const weekLockedRulesDisplay = dbDisplayByWeek[currentWeekKey] || [];
 
@@ -119,12 +117,9 @@ export default function Home() {
     await updateWeeklyRulesForWeek(currentWeekKey, weekLockedRules, display);
   };
 
-  // For compatibility with existing components
-  const setWeeklyLockedRules = () => {};
-  const setWeeklyLockedRulesDisplay = () => {};
-
   const [lockedShifts, setLockedShifts] = useState<LockedShift[]>([]);
   const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Logo - use localStorage as primary storage (more reliable for large base64)
   // Initialize from localStorage on mount
@@ -138,13 +133,17 @@ export default function Home() {
   // The displayed logo - prefer local storage, fall back to DB
   const logoUrl = localLogoUrl || dbLogoUrl;
 
-  // Sync from DB to localStorage if DB has a value and localStorage doesn't
+  // Sync from DB to localStorage when DB has a value and localStorage doesn't
+  // The logoUrl derivation above already handles displaying the correct logo
+  // This effect just ensures localStorage gets populated for future page loads
   useEffect(() => {
     if (dbLogoUrl && !localLogoUrl && typeof window !== 'undefined') {
       localStorage.setItem('bobolas-logo', dbLogoUrl);
-      setLocalLogoUrl(dbLogoUrl);
+      // Note: We don't call setLocalLogoUrl here to avoid cascading renders
+      // The displayed logo will still show correctly via the logoUrl derivation
     }
-  }, [dbLogoUrl, localLogoUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbLogoUrl]); // Intentionally excluding localLogoUrl to avoid triggering on every localStorage update
 
   // Helper to compress image before saving
   const compressImage = (dataUrl: string, maxWidth: number = 200): Promise<string> => {
@@ -208,48 +207,80 @@ export default function Home() {
     const migrateData = async () => {
       if (hasMigrated || employeesLoading) return;
 
-      // Only migrate if InstantDB has no employees yet
-      if (dbEmployees.length === 0 && authUser) {
-        console.log('Migrating data from localStorage to InstantDB...');
+      if (authUser) {
+        // Always sync missing employees from initial data
+        const existingNames = new Set(dbEmployees.map(e => e.name));
+        const missingEmployees = initialEmployees.filter(e => !existingNames.has(e.name));
 
-        // Migrate employees
-        try {
-          await bulkCreateEmployees(initialEmployees);
-          console.log('Employees migrated successfully');
-        } catch (e) {
-          console.error('Failed to migrate employees:', e);
+        if (missingEmployees.length > 0) {
+          console.log(`Syncing ${missingEmployees.length} missing employees...`);
+          try {
+            await bulkCreateEmployees(missingEmployees);
+            console.log('Employees synced successfully');
+          } catch (e) {
+            console.error('Failed to sync employees:', e);
+          }
         }
 
-        // Migrate logo
-        const savedLogo = localStorage.getItem('bobolas-logo');
-        if (savedLogo) {
-          await updateLogoUrl(savedLogo);
-        }
+        // Only migrate other data if InstantDB has no employees yet (first time)
+        if (dbEmployees.length === 0) {
+          console.log('First time setup - migrating other data...');
 
-        // Migrate default staffing template
-        const savedTemplate = localStorage.getItem('bobolas-default-staffing-template');
-        if (savedTemplate) {
-          await updateDefaultStaffingTemplate(JSON.parse(savedTemplate));
-        }
+          // Migrate logo
+          const savedLogo = localStorage.getItem('bobolas-logo');
+          if (savedLogo) {
+            await updateLogoUrl(savedLogo);
+          }
 
-        // Migrate permanent rules
-        const savedPermanentRules = localStorage.getItem('bobolas-permanent-rules');
-        const savedPermanentDisplay = localStorage.getItem('bobolas-permanent-display');
-        if (savedPermanentRules || savedPermanentDisplay) {
-          await updatePermanentRules(
-            savedPermanentRules ? JSON.parse(savedPermanentRules) : [],
-            savedPermanentDisplay ? JSON.parse(savedPermanentDisplay) : []
-          );
-        }
+          // Migrate default staffing template
+          const savedTemplate = localStorage.getItem('bobolas-default-staffing-template');
+          if (savedTemplate) {
+            await updateDefaultStaffingTemplate(JSON.parse(savedTemplate));
+          }
 
-        console.log('Migration complete!');
+          // Migrate permanent rules
+          const savedPermanentRules = localStorage.getItem('bobolas-permanent-rules');
+          const savedPermanentDisplay = localStorage.getItem('bobolas-permanent-display');
+          if (savedPermanentRules || savedPermanentDisplay) {
+            await updatePermanentRules(
+              savedPermanentRules ? JSON.parse(savedPermanentRules) : [],
+              savedPermanentDisplay ? JSON.parse(savedPermanentDisplay) : []
+            );
+          }
+
+          console.log('Migration complete!');
+        }
       }
 
       setHasMigrated(true);
     };
 
     migrateData();
-  }, [hasMigrated, employeesLoading, dbEmployees.length, authUser]);
+  }, [hasMigrated, employeesLoading, dbEmployees, authUser]);
+
+  // If no profile but this is the first user, auto-create them as manager
+  useEffect(() => {
+    if (!userProfile && isFirstUser && authUser?.email && !isCreatingProfile) {
+      const setupFirstUser = async () => {
+        setIsCreatingProfile(true);
+        try {
+          const email = authUser.email as string;
+          await createUserProfile({
+            email: email,
+            name: email.split('@')[0],
+            role: 'manager',
+            createdAt: Date.now(),
+          });
+          window.location.reload();
+        } catch (error) {
+          console.error('Failed to create profile:', error);
+          setIsCreatingProfile(false);
+        }
+      };
+      setupFirstUser();
+    }
+  }, [userProfile, isFirstUser, authUser?.email, isCreatingProfile]);
+
   const DEFAULT_STAFFING_NEEDS: WeeklyStaffingNeeds = {
     tuesday: {
       slots: [
@@ -305,7 +336,6 @@ export default function Home() {
 
   // Staffing needs from InstantDB
   const defaultStaffingTemplate = dbDefaultTemplate || DEFAULT_STAFFING_NEEDS;
-  const weeklyStaffingNeeds = dbStaffingByWeek;
 
   // Get staffing needs for current week or use default template
   const staffingNeeds = dbStaffingByWeek[currentWeekKey] || defaultStaffingTemplate;
@@ -340,6 +370,27 @@ export default function Home() {
     await createEmployee(newEmployee);
   };
 
+  // Manual sync for missing employees
+  const handleSyncEmployees = async () => {
+    const existingNames = new Set(dbEmployees.map(e => e.name));
+    const missingEmployees = initialEmployees.filter(e => !existingNames.has(e.name));
+
+    if (missingEmployees.length === 0) {
+      alert('All employees are already synced!');
+      return;
+    }
+
+    console.log(`Syncing ${missingEmployees.length} missing employees:`, missingEmployees.map(e => e.name));
+    try {
+      await bulkCreateEmployees(missingEmployees);
+      alert(`Successfully synced ${missingEmployees.length} employees!`);
+      window.location.reload();
+    } catch (e) {
+      console.error('Failed to sync employees:', e);
+      alert('Failed to sync employees. Check console for details.');
+    }
+  };
+
   const handleRemoveEmployee = async (employeeId: string) => {
     await deleteEmployee(employeeId);
     // Also remove any locked shifts for this employee
@@ -359,17 +410,23 @@ export default function Home() {
         note: 'Locked shift',
       }));
 
+      // Parse notes automatically (for CLOSED days, early close, etc.)
+      const notesOverrides = notes.trim() ? parseScheduleNotes(notes, employees) : [];
+
       // Combine ALL rule sources:
       // 1. permanentRules - apply to ALL weeks (from Notes & Staffing)
       // 2. weekLockedRules - apply to THIS WEEK only (from Notes & Staffing)
-      // 3. lockedOverrides - from locked shifts on the schedule grid
-      const allOverrides = [...permanentRules, ...weekLockedRules, ...lockedOverrides];
+      // 3. notesOverrides - parsed from current week's notes text
+      // 4. lockedOverrides - from locked shifts on the schedule grid
+      const allOverrides = [...permanentRules, ...weekLockedRules, ...notesOverrides, ...lockedOverrides];
 
       console.log('Generating schedule with rules:', {
         permanentRules: permanentRules.length,
         weekLockedRules: weekLockedRules.length,
+        notesOverrides: notesOverrides.length,
         lockedOverrides: lockedOverrides.length,
-        totalOverrides: allOverrides.length
+        totalOverrides: allOverrides.length,
+        notesText: notes
       });
 
       // Pass locked shifts and existing assignments so they persist through regeneration
@@ -421,13 +478,12 @@ export default function Home() {
 
   const handleSignOut = async () => {
     await signOut();
-    setShowLogin(false);
   };
 
   // Handle auth error - show login page instead of being stuck
   if (authError) {
     console.error('Auth error:', authError);
-    return <LoginPage onLoginSuccess={() => window.location.reload()} />;
+    return <LoginPage onLoginSuccess={() => window.location.reload()} logoUrl={logoUrl} />;
   }
 
   // Loading state - but don't wait forever
@@ -444,7 +500,7 @@ export default function Home() {
 
   // Show login page if not authenticated
   if (!authUser) {
-    return <LoginPage onLoginSuccess={() => window.location.reload()} />;
+    return <LoginPage onLoginSuccess={() => window.location.reload()} logoUrl={logoUrl} />;
   }
 
   // Show loading while checking first user status or profile
@@ -459,26 +515,8 @@ export default function Home() {
     );
   }
 
-  // If no profile but this is the first user, auto-create them as manager
+  // Show loading while setting up first user
   if (!userProfile && isFirstUser && authUser?.email) {
-    // Auto-create first user as manager
-    const setupFirstUser = async () => {
-      setIsCreatingProfile(true);
-      try {
-        const email = authUser.email as string;
-        await createUserProfile({
-          email: email,
-          name: email.split('@')[0],
-          role: 'manager',
-          createdAt: Date.now(),
-        });
-        window.location.reload();
-      } catch (error) {
-        console.error('Failed to create profile:', error);
-        setIsCreatingProfile(false);
-      }
-    };
-    setupFirstUser();
     return (
       <div className="min-h-screen bg-[#0d0d0f] flex items-center justify-center">
         <div className="text-center">
@@ -531,15 +569,11 @@ export default function Home() {
         weekStart={weekStart}
         formatWeekRange={formatWeekRange}
         changeWeek={changeWeek}
-        staffingNeeds={staffingNeeds}
       />
     );
   }
 
   // Manager sees full dashboard
-  // Mobile sidebar state
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
   return (
     <div className="flex min-h-screen bg-[#0d0d0f]">
       <Sidebar
@@ -568,6 +602,7 @@ export default function Home() {
               <div className="lg:hidden flex items-center gap-2">
                 <div className="w-8 h-8 bg-[#e5a825] rounded-lg flex items-center justify-center overflow-hidden">
                   {logoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
                   ) : (
                     <span className="text-[#0d0d0f] font-bold text-sm">B</span>
@@ -601,6 +636,7 @@ export default function Home() {
                 <div className="relative group">
                   <button className="w-10 h-10 bg-[#e5a825] rounded-full flex items-center justify-center cursor-pointer shadow-lg shadow-[#e5a825]/20 hover:shadow-[#e5a825]/40 hover:scale-105 transition-all duration-200 ring-2 ring-[#e5a825]/20 overflow-hidden">
                     {profilePicUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img src={profilePicUrl} alt="Profile" className="w-full h-full object-cover" />
                     ) : (
                       <span className="text-[#0d0d0f] font-semibold text-sm">
@@ -615,6 +651,7 @@ export default function Home() {
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 bg-[#e5a825] rounded-full flex items-center justify-center overflow-hidden flex-shrink-0">
                           {profilePicUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
                             <img src={profilePicUrl} alt="Profile" className="w-full h-full object-cover" />
                           ) : (
                             <span className="text-[#0d0d0f] font-semibold text-lg">
@@ -694,7 +731,6 @@ export default function Home() {
               notes={notes}
               setNotes={setNotes}
               overrides={[...permanentRules, ...weekLockedRules]}
-              setOverrides={setOverrides}
               staffingNeeds={staffingNeeds}
               weekLockedRules={weekLockedRules}
               setWeekLockedRules={setWeekLockedRules}
@@ -743,14 +779,6 @@ export default function Home() {
             />
           )}
 
-          {activeTab === 'users' && (
-            <UserManagement
-              currentUser={currentUser}
-              employees={employees}
-              profilePicUrl={profilePicUrl}
-            />
-          )}
-
           {activeTab === 'settings' && (
             <SettingsView
               settings={appSettings}
@@ -777,6 +805,14 @@ export default function Home() {
                 link.download = `schedule-${currentWeekKey}.csv`;
                 link.click();
               }}
+              onSyncEmployees={handleSyncEmployees}
+              missingEmployeeCount={initialEmployees.filter(e => !dbEmployees.some(db => db.name === e.name)).length}
+              currentUser={currentUser}
+              profilePicUrl={profilePicUrl}
+              staffingNeeds={staffingNeeds}
+              setStaffingNeeds={setStaffingNeeds}
+              saveAsDefaultTemplate={saveAsDefaultTemplate}
+              showSavedDefaultMessage={showSavedDefaultMessage}
             />
           )}
         </div>
@@ -822,15 +858,6 @@ function BellIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-    </svg>
-  );
-}
-
-function SettingsIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
   );
 }

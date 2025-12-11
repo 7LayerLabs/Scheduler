@@ -9,56 +9,15 @@ import {
   DayAvailability,
   ScheduleOverride,
   WeeklyStaffingNeeds,
-  EmployeeRestriction
+  PermanentRule,
+  SCHEDULING_RULES,
 } from './types';
 
-
-// Helper functions (moved from employees.ts to avoid circular dependency)
-function isBartender(employee: Employee): boolean {
-  return employee.bartendingScale >= 3;
-}
-
-function canWorkAlone(employee: Employee): boolean {
-  return employee.aloneScale >= 3;
-}
-
-interface TimeSlot {
-  day: DayOfWeek;
-  date: string;
-  startTime: string;
-  endTime: string;
-  type: 'morning' | 'mid' | 'night';
-  minStaff: number;
-  requiresBartender: boolean;
-}
-
-interface EmployeeHours {
-  [employeeId: string]: number;
-}
-
-interface EmployeeShifts {
-  [employeeId: string]: number;
-}
 
 // Parse time string to minutes since midnight
 function timeToMinutes(time: string): number {
   const [hours, minutes] = time.split(':').map(Number);
   return hours * 60 + minutes;
-}
-
-// Calculate shift duration in hours
-function getShiftDuration(startTime: string, endTime: string): number {
-  const start = timeToMinutes(startTime);
-  const end = timeToMinutes(endTime);
-  return (end - start) / 60;
-}
-
-// Check if a time falls within a range
-function isTimeInRange(time: string, start: string, end: string): boolean {
-  const t = timeToMinutes(time);
-  const s = timeToMinutes(start);
-  const e = timeToMinutes(end);
-  return t >= s && t < e;
 }
 
 // Check if employee restrictions allow working a shift
@@ -75,12 +34,18 @@ function checkRestrictions(
   const shiftStart = timeToMinutes(shiftStartTime);
   const shiftEnd = timeToMinutes(shiftEndTime);
 
+  console.log(`Checking restrictions for ${employee.name} on ${day}, shift ${shiftStartTime}-${shiftEndTime}`);
+  console.log(`  Restrictions:`, employee.restrictions);
+
   for (const restriction of employee.restrictions) {
     // Check if restriction applies to this day
     // If days array is empty, it applies to all working days
     if (restriction.days.length > 0 && !restriction.days.includes(day)) {
+      console.log(`  Restriction ${restriction.type} skipped - doesn't apply to ${day}, only to:`, restriction.days);
       continue;
     }
+
+    console.log(`  Checking restriction: ${restriction.type}, time: ${restriction.time}`);
 
     switch (restriction.type) {
       case 'no_before':
@@ -100,7 +65,9 @@ function checkRestrictions(
         // Employee must finish work by this time
         if (restriction.time) {
           const latestEnd = timeToMinutes(restriction.time);
+          console.log(`  no_after check: shiftEnd=${shiftEnd} (${shiftEndTime}), latestEnd=${latestEnd} (${restriction.time})`);
           if (shiftEnd > latestEnd) {
+            console.log(`  BLOCKED: ${employee.name} cannot work after ${restriction.time}`);
             return {
               allowed: false,
               reason: `${employee.name} cannot work after ${restriction.time}${restriction.reason ? ` (${restriction.reason})` : ''}`
@@ -129,94 +96,102 @@ function checkRestrictions(
   return { allowed: true };
 }
 
-// Check if employee is available for a specific date and time
-function isEmployeeAvailable(
+// Check if employee has a permanent rule that affects scheduling for a day/time
+function checkPermanentRules(
   employee: Employee,
   day: DayOfWeek,
-  date: string,
-  shiftType: 'morning' | 'mid' | 'night',
-  startTime: string
-): boolean {
-  // Check exclusions
-  for (const exclusion of employee.exclusions) {
-    if (date >= exclusion.startDate && date <= exclusion.endDate) {
-      return false;
+  shiftStartTime: string,
+  shiftEndTime: string
+): { allowed: boolean; fixedShift?: { startTime: string; endTime: string }; reason?: string } {
+  if (!employee.permanentRules || employee.permanentRules.length === 0) {
+    return { allowed: true };
+  }
+
+  const shiftStart = timeToMinutes(shiftStartTime);
+  const shiftEnd = timeToMinutes(shiftEndTime);
+
+  // Get active rules for this day
+  // For fixed_shift rules, check the days array; for others, check the single day field
+  const dayRules = employee.permanentRules.filter(r => {
+    if (!r.isActive) return false;
+    if (r.type === 'fixed_shift') {
+      // Check days array for fixed_shift (supports multiple days)
+      const ruleDays = r.days && r.days.length > 0 ? r.days : [r.day];
+      return ruleDays.includes(day);
+    }
+    // For other types, check single day
+    return r.day === day;
+  });
+
+  for (const rule of dayRules) {
+    switch (rule.type) {
+      case 'never_schedule':
+        // Employee should never be scheduled on this day
+        return {
+          allowed: false,
+          reason: `${employee.name} has "never schedule" rule for ${day}${rule.reason ? ` (${rule.reason})` : ''}`
+        };
+
+      case 'only_available':
+        // Employee can ONLY work during this specific window
+        if (rule.startTime && rule.endTime) {
+          const ruleStart = timeToMinutes(rule.startTime);
+          const ruleEnd = timeToMinutes(rule.endTime);
+
+          // Shift must be entirely within the only_available window
+          if (shiftStart < ruleStart || shiftEnd > ruleEnd) {
+            return {
+              allowed: false,
+              reason: `${employee.name} is only available ${rule.startTime}-${rule.endTime} on ${day}${rule.reason ? ` (${rule.reason})` : ''}`
+            };
+          }
+        }
+        break;
+
+      case 'fixed_shift':
+        // Return the fixed shift time - scheduler should use this instead
+        if (rule.startTime && rule.endTime) {
+          return {
+            allowed: true,
+            fixedShift: { startTime: rule.startTime, endTime: rule.endTime }
+          };
+        }
+        break;
     }
   }
 
-  // Get day availability
-  const dayAvail = employee.availability[day] as DayAvailability | null;
-  if (!dayAvail || !dayAvail.available) {
-    return false;
-  }
-
-  // Check if any available shift matches
-  for (const shift of dayAvail.shifts) {
-    if (shift.type === 'any') {
-      // Check start time constraint if specified
-      if (shift.startTime && timeToMinutes(startTime) < timeToMinutes(shift.startTime)) {
-        continue;
-      }
-      return true;
-    }
-
-    if (shift.type === shiftType) {
-      // Check start time constraint if specified
-      if (shift.startTime && timeToMinutes(startTime) < timeToMinutes(shift.startTime)) {
-        continue;
-      }
-      return true;
-    }
-
-    if (shift.type === 'custom' && shift.startTime && shift.endTime) {
-      if (isTimeInRange(startTime, shift.startTime, shift.endTime)) {
-        return true;
-      }
-    }
-  }
-
-  return false;
+  return { allowed: true };
 }
 
-// Score an employee for a shift (higher is better)
-function scoreEmployee(
+// Get all fixed_shift permanent rules for an employee
+function getFixedShiftRules(employee: Employee): PermanentRule[] {
+  if (!employee.permanentRules) return [];
+  return employee.permanentRules.filter(r => r.isActive && r.type === 'fixed_shift');
+}
+
+// Check if shift duration meets minimum for servers (non-bartenders)
+function checkMinimumShiftDuration(
   employee: Employee,
-  shiftType: 'morning' | 'mid' | 'night',
-  currentHours: EmployeeHours,
-  currentShifts: EmployeeShifts,
-  needsBartender: boolean
-): number {
-  let score = 0;
-
-  // Prefer employees who want more shifts
-  const minShifts = employee.minShiftsPerWeek || 0;
-  const currentShiftCount = currentShifts[employee.id] || 0;
-  if (currentShiftCount < minShifts) {
-    score += 30; // Strong preference for those who need shifts
+  shiftStartTime: string,
+  shiftEndTime: string
+): { allowed: boolean; reason?: string } {
+  // Only apply to servers (bartendingScale < 3)
+  if (employee.bartendingScale >= 3) {
+    return { allowed: true };
   }
 
-  // Match preferences
-  if (shiftType === 'morning' && employee.preferences.prefersMorning) score += 10;
-  if (shiftType === 'mid' && employee.preferences.prefersMid) score += 10;
-  if (shiftType === 'night' && employee.preferences.prefersNight) score += 10;
+  const startMins = timeToMinutes(shiftStartTime);
+  const endMins = timeToMinutes(shiftEndTime);
+  const durationHours = (endMins - startMins) / 60;
 
-  // Bartending ability
-  if (needsBartender && isBartender(employee)) {
-    score += 20;
+  if (durationHours < SCHEDULING_RULES.SERVER_MIN_SHIFT_HOURS) {
+    return {
+      allowed: false,
+      reason: `${employee.name} (server) shift is ${durationHours.toFixed(1)} hours - minimum is ${SCHEDULING_RULES.SERVER_MIN_SHIFT_HOURS} hours`
+    };
   }
 
-  // Balance hours across staff
-  const hours = currentHours[employee.id] || 0;
-  if (hours < 20) score += 10;
-  if (hours < 10) score += 10;
-  if (hours > 35) score -= 20;
-
-  // Can work alone is valuable
-  if (canWorkAlone(employee)) {
-    score += 5;
-  }
-
-  return score;
+  return { allowed: true };
 }
 
 // Get Monday of the week containing the given date
@@ -259,8 +234,13 @@ export function generateSchedule(
 ): WeeklySchedule {
   const weekStart = getWeekStart(weekStartDate);
 
+  // Filter out inactive employees - they should not be scheduled
+  // Use this filtered list for all scheduling operations
+  const schedulableEmployees = employees.filter(e => e.isActive !== false);
+
   console.log('=== GENERATE SCHEDULE ===');
   console.log('Week start:', weekStart.toISOString());
+  console.log('Total employees:', employees.length, 'Active (schedulable):', schedulableEmployees.length);
   console.log('Total overrides received:', overrides.length);
   console.log('Override details:', overrides.map(o => ({
     employeeId: o.employeeId,
@@ -291,14 +271,6 @@ export function generateSchedule(
   // Helper to get early close time for a day (returns null if no early close)
   const getEarlyCloseTime = (day: DayOfWeek): string | null => earlyCloseTimes.get(day) || null;
 
-  // Helper to get day from date string
-  const getDayFromDate = (dateStr: string): DayOfWeek => {
-    const date = new Date(dateStr + 'T12:00:00'); // Add time to avoid timezone issues
-    const dayIndex = date.getDay();
-    const days: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    return days[dayIndex];
-  };
-
   // 1. Process overrides and set schedules to create initial assignments
   const assignments: ScheduleAssignment[] = [];
   const conflicts: ScheduleConflict[] = [];
@@ -306,8 +278,8 @@ export function generateSchedule(
   const employeeShifts: Record<string, number> = {};
   const employeeHours: Record<string, number> = {};
 
-  // Initialize counts
-  employees.forEach(emp => {
+  // Initialize counts for schedulable employees only
+  schedulableEmployees.forEach(emp => {
     employeeShifts[emp.id] = 0;
     employeeHours[emp.id] = 0;
   });
@@ -394,13 +366,33 @@ export function generateSchedule(
   }
 
   // 1a. Process Set Schedules (Highest Priority)
-  // BUT: Skip closed days and respect early close times
-  employees.forEach(emp => {
+  // BUT: Skip closed days, respect early close times, AND check exclude overrides
+  schedulableEmployees.forEach(emp => {
     if (emp.setSchedule) {
       emp.setSchedule.forEach(setShift => {
         // SKIP if this day is closed
         if (isDayClosed(setShift.day)) {
           console.log(`Skipping set schedule for ${emp.name} on ${setShift.day} - day is CLOSED`);
+          return;
+        }
+
+        // CHECK FOR EXCLUDE OVERRIDE - week notes/rules take priority over set schedules
+        const dayOverridesForSetSchedule = overrides.filter(o => o.day === setShift.day);
+        const isExcludedByOverride = dayOverridesForSetSchedule.some(o =>
+          o.type === 'exclude' &&
+          o.employeeId === emp.id &&
+          (o.shiftType === 'any' || o.shiftType === setShift.shiftType)
+        );
+        if (isExcludedByOverride) {
+          console.log(`[SET SCHEDULE BLOCKED] ${emp.name} set schedule on ${setShift.day} BLOCKED by exclude override`);
+          return;
+        }
+
+        // CHECK AVAILABILITY - employee must be available on this day
+        const dayKey = setShift.day as keyof typeof emp.availability;
+        const dayAvail = emp.availability[dayKey];
+        if (!dayAvail || !dayAvail.available) {
+          console.log(`[SET SCHEDULE BLOCKED] ${emp.name} set schedule on ${setShift.day} BLOCKED - not available`);
           return;
         }
 
@@ -416,7 +408,7 @@ export function generateSchedule(
         const shiftId = `${setShift.day}-${setShift.shiftType}`;
 
         // Create a synthetic shift object for the assignment
-        let shiftStartTime = setShift.startTime || (setShift.shiftType === 'morning' ? dayStaffing?.morningStart : dayStaffing?.nightStart) || '09:00';
+        const shiftStartTime = setShift.startTime || (setShift.shiftType === 'morning' ? dayStaffing?.morningStart : dayStaffing?.nightStart) || '09:00';
         let shiftEndTime = setShift.endTime || (setShift.shiftType === 'morning' ? dayStaffing?.morningEnd : dayStaffing?.nightEnd) || '17:00';
 
         // Check early close and adjust
@@ -462,6 +454,107 @@ export function generateSchedule(
     }
   });
 
+  // 1aa. Process Permanent Rules - Fixed Shifts (High Priority)
+  // These are recurring fixed schedules like "Employee A only works Saturday 9am-12pm"
+  // Now supports multiple days per rule
+  // BUT: Week-level exclude overrides take priority over permanent rules
+  schedulableEmployees.forEach(emp => {
+    const fixedRules = getFixedShiftRules(emp);
+    for (const rule of fixedRules) {
+      // Get all days for this rule (use days array if available, otherwise fall back to single day)
+      const ruleDays = rule.days && rule.days.length > 0 ? rule.days : [rule.day];
+
+      for (const ruleDay of ruleDays) {
+        // SKIP if this day is closed
+        if (isDayClosed(ruleDay)) {
+          console.log(`Skipping fixed rule for ${emp.name} on ${ruleDay} - day is CLOSED`);
+          continue;
+        }
+
+        // CHECK FOR EXCLUDE OVERRIDE - week notes/rules take priority over permanent fixed shifts
+        const dayOverridesForFixedRule = overrides.filter(o => o.day === ruleDay);
+        const ruleStartHour = rule.startTime ? parseInt(rule.startTime.split(':')[0]) : 9;
+        const ruleShiftType = ruleStartHour < 16 ? 'morning' : 'night';
+        const isExcludedByOverride = dayOverridesForFixedRule.some(o =>
+          o.type === 'exclude' &&
+          o.employeeId === emp.id &&
+          (o.shiftType === 'any' || o.shiftType === ruleShiftType)
+        );
+        if (isExcludedByOverride) {
+          console.log(`[FIXED RULE BLOCKED] ${emp.name} fixed rule on ${ruleDay} BLOCKED by exclude override`);
+          continue;
+        }
+
+        // CHECK AVAILABILITY - employee must be available on this day for fixed_shift rules to apply
+        const dayKeyForFixed = ruleDay as keyof typeof emp.availability;
+        const dayAvailForFixed = emp.availability[dayKeyForFixed];
+        if (!dayAvailForFixed || !dayAvailForFixed.available) {
+          console.log(`[FIXED RULE BLOCKED] ${emp.name} fixed rule on ${ruleDay} BLOCKED - not available`);
+          continue;
+        }
+
+        const dayIndex = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].indexOf(ruleDay);
+        if (dayIndex === -1) continue;
+
+        const date = new Date(weekStart);
+        date.setDate(date.getDate() + dayIndex);
+        const dateStr = date.toISOString().split('T')[0];
+
+        // Check if already assigned for this day
+        const alreadyAssigned = assignments.some(a => a.employeeId === emp.id && a.date === dateStr);
+        if (alreadyAssigned) {
+          console.log(`Skipping fixed rule for ${emp.name} on ${ruleDay} - already assigned`);
+          continue;
+        }
+
+        let shiftStartTime = rule.startTime || '09:00';
+        let shiftEndTime = rule.endTime || '17:00';
+
+        // Check early close and adjust
+        const earlyClose = getEarlyCloseTime(ruleDay);
+        if (earlyClose) {
+          const earlyCloseMins = timeToMinutes(earlyClose);
+          const startMins = timeToMinutes(shiftStartTime);
+          const endMins = timeToMinutes(shiftEndTime);
+
+          // Skip if shift starts after early close
+          if (startMins >= earlyCloseMins) {
+            console.log(`Skipping fixed rule for ${emp.name} - starts after early close (${earlyClose})`);
+            continue;
+          }
+
+          // Truncate if ends after early close
+          if (endMins > earlyCloseMins) {
+            shiftEndTime = earlyClose;
+            console.log(`Truncating fixed rule for ${emp.name} to end at ${earlyClose}`);
+          }
+        }
+
+        // Determine shift type based on start time
+        const startHour = parseInt(shiftStartTime.split(':')[0]);
+        const shiftType = startHour < 12 ? 'morning' : startHour < 16 ? 'mid' : 'night';
+
+        const shiftId = `${ruleDay}-fixed-${emp.id}`;
+        const shift = {
+          id: shiftId,
+          startTime: shiftStartTime,
+          endTime: shiftEndTime,
+          duration: getShiftDuration(shiftStartTime, shiftEndTime),
+        };
+
+        console.log(`Adding fixed shift for ${emp.name} on ${ruleDay}: ${shiftStartTime}-${shiftEndTime}`);
+
+        addAssignment({
+          shiftId: shift.id,
+          employeeId: emp.id,
+          date: dateStr,
+          startTime: shift.startTime,
+          endTime: shift.endTime
+        }, shift);
+      }
+    }
+  });
+
   // 1b. Process Overrides (High Priority)
   // The original override processing was per day. We need to adapt it to the new structure.
   // Custom time overrides are processed first as they create specific shifts.
@@ -473,6 +566,15 @@ export function generateSchedule(
   for (const day of days) {
     const dateStr = getDateForDay(weekStart, day);
     const dayOverrides = overrides.filter(o => o.day === day);
+
+    // Log ALL exclude overrides for debugging
+    const excludeOverrides = dayOverrides.filter(o => o.type === 'exclude');
+    if (excludeOverrides.length > 0) {
+      console.log(`[EXCLUDE DEBUG] ${day} has ${excludeOverrides.length} exclude overrides:`, excludeOverrides.map(o => {
+        const emp = schedulableEmployees.find(e => e.id === o.employeeId);
+        return { employeeName: emp?.name || o.employeeId, shiftType: o.shiftType };
+      }));
+    }
 
     console.log(`Processing ${day} (${dateStr}):`, {
       totalOverrides: overrides.length,
@@ -505,7 +607,7 @@ export function generateSchedule(
         // Use the new slots array
         for (const slot of needs.slots) {
           let slotEndTime = slot.endTime;
-          let slotStartTime = slot.startTime;
+          const slotStartTime = slot.startTime;
 
           // Apply early close time if set
           if (earlyCloseTime) {
@@ -583,7 +685,7 @@ export function generateSchedule(
     // Handle custom time assignments - these modify existing shifts or create coverage
     const customTimeOverrides = dayOverrides.filter(o => o.type === 'custom_time');
     for (const customTime of customTimeOverrides) {
-      const emp = employees.find(e => e.id === customTime.employeeId);
+      const emp = schedulableEmployees.find(e => e.id === customTime.employeeId);
       if (!emp) continue;
 
       // Find the shift slot this employee would normally fill
@@ -722,13 +824,11 @@ export function generateSchedule(
         assignShift(
           shift,
           dateStr,
-          employees,
+          schedulableEmployees,
           assignments,
           employeeHours,
           employeeShifts,
-          dayOverrides,
-          conflicts,
-          warnings
+          dayOverrides
         );
       }
     }
@@ -737,20 +837,18 @@ export function generateSchedule(
       assignShift(
         shift,
         dateStr,
-        employees,
+        schedulableEmployees,
         assignments,
         employeeHours,
         employeeShifts,
-        dayOverrides,
-        conflicts,
-        warnings
+        dayOverrides
       );
     }
 
   }
 
   // Check for employees not getting enough shifts
-  for (const emp of employees) {
+  for (const emp of schedulableEmployees) {
     const minShifts = emp.minShiftsPerWeek || 0;
     if (minShifts > 0 && employeeShifts[emp.id] < minShifts) {
       warnings.push({
@@ -798,7 +896,7 @@ export function generateSchedule(
 
     // Find all employees working this day with their time ranges
     const workingEmployees = dateAssignments.map(a => {
-      const emp = employees.find(e => e.id === a.employeeId);
+      const emp = schedulableEmployees.find(e => e.id === a.employeeId);
       return {
         assignment: a,
         employee: emp,
@@ -862,13 +960,24 @@ export function generateSchedule(
         const gapDuration = (gap.end - gap.start) / 60;
 
         // Find available bartenders (3+ rating) who aren't already scheduled that day
-        const availableBartenders = employees.filter(emp => {
+        const availableBartenders = schedulableEmployees.filter(emp => {
           if (emp.bartendingScale < 3) return false;
           // Check if already working that day (could extend their shift but for now find new coverage)
           if (dateAssignments.some(a => a.employeeId === emp.id)) return false;
           // Check availability for this day
           const dayAvail = emp.availability[day] as DayAvailability | null;
           if (!dayAvail || !dayAvail.available) return false;
+          // Check for exclude overrides - week notes/rules take priority
+          const dayOverridesForGap = overrides.filter(o => o.day === day);
+          const isExcludedByOverride = dayOverridesForGap.some(o =>
+            o.type === 'exclude' &&
+            o.employeeId === emp.id &&
+            (o.shiftType === 'any' || o.shiftType === 'night') // Gap filling is typically for night coverage
+          );
+          if (isExcludedByOverride) {
+            console.log(`[GAP FILL BLOCKED] ${emp.name} blocked from gap fill on ${day} by exclude override`);
+            return false;
+          }
           return true;
         });
 
@@ -891,18 +1000,21 @@ export function generateSchedule(
           employeeHours[bartender.id] = (employeeHours[bartender.id] || 0) + gapDuration;
           employeeShifts[bartender.id] = (employeeShifts[bartender.id] || 0) + 1;
 
+          // Format day name for display
+          const dayDisplay = day.charAt(0).toUpperCase() + day.slice(1);
           warnings.push({
             type: 'coverage_needed',
             employeeId: needsCoverage.id,
-            message: `${needsCoverage.name} (rating ${needsCoverage.bartendingScale}) gap ${gapStartTime}-${gapEndTime} filled by ${bartender.name} (rating ${bartender.bartendingScale})`
+            message: `${dayDisplay} (${date}): ${needsCoverage.name} (rating ${needsCoverage.bartendingScale}) gap ${gapStartTime}-${gapEndTime} filled by ${bartender.name} (rating ${bartender.bartendingScale})`
           });
         } else {
           // No available bartender for this gap - add conflict
+          const dayDisplay = day.charAt(0).toUpperCase() + day.slice(1);
           conflicts.push({
             type: 'no_bartender',
             shiftId: working.assignment.shiftId,
             date,
-            message: `${needsCoverage.name} (rating ${needsCoverage.bartendingScale}) has no 3+ star coverage from ${gapStartTime} to ${gapEndTime}`
+            message: `${dayDisplay} (${date}): ${needsCoverage.name} (rating ${needsCoverage.bartendingScale}) has no 3+ star coverage from ${gapStartTime} to ${gapEndTime}`
           });
         }
       }
@@ -990,8 +1102,8 @@ export function generateSchedule(
     // Skip business-wide rules
     if (override.employeeId === '__ALL__' || override.employeeId === '__CLOSE_EARLY__') continue;
 
-    const emp = employees.find(e => e.id === override.employeeId);
-    if (!emp) continue;
+    const emp = schedulableEmployees.find(e => e.id === override.employeeId);
+    if (!emp) continue; // Skip if employee not found or inactive
 
     const dayDate = getDateForDay(weekStart, override.day);
     const empAssignments = filteredAssignments.filter(a => a.employeeId === emp.id && a.date === dayDate);
@@ -1017,11 +1129,11 @@ export function generateSchedule(
           message: `Rule violation: ${emp.name} was NOT scheduled on ${override.day} despite assignment rule`,
         });
       } else if (override.shiftType !== 'any' && override.type === 'assign') {
-        // Check if shift type matches
+        // Check if shift type matches based on actual start time (before 4pm = morning/lunch, 4pm+ = dinner)
         const hasMatchingShift = empAssignments.some(a => {
-          if (override.shiftType === 'morning') return a.shiftId.includes('morning') || a.shiftId.includes('early');
-          if (override.shiftType === 'night') return a.shiftId.includes('night');
-          return false;
+          const startHour = a.startTime ? parseInt(a.startTime.split(':')[0]) : 12;
+          const assignmentType = startHour < 16 ? 'morning' : 'night';
+          return override.shiftType === assignmentType;
         });
 
         if (!hasMatchingShift) {
@@ -1052,18 +1164,17 @@ function assignShift(
   assignments: ScheduleAssignment[],
   employeeHours: Record<string, number>,
   employeeShiftCounts: Record<string, number>,
-  overrides: ScheduleOverride[],
-  conflicts: ScheduleConflict[],
-  warnings: ScheduleWarning[]
+  overrides: ScheduleOverride[]
 ) {
   // Check if shift is already filled
   const currentAssignments = assignments.filter(a => a.shiftId === shift.id && a.date === date);
   if (currentAssignments.length >= shift.requiredStaff) return;
 
   // FIRST: Process explicit "assign" overrides - these MUST be respected
-  // They bypass normal availability checks
+  // They bypass normal availability checks but must match the day
   const forcedAssignments = overrides.filter(o =>
     (o.type === 'assign' || o.type === 'custom_time') &&
+    o.day === shift.day &&
     (o.shiftType === 'any' || o.shiftType === shift.type)
   );
 
@@ -1074,10 +1185,11 @@ function assignShift(
     // Skip if already assigned today
     if (assignments.some(a => a.employeeId === emp.id && a.date === date)) continue;
 
-    // Skip if excluded (exclude takes priority over assign)
+    // Skip if excluded (exclude takes priority over assign) - must match day
     const isExcluded = overrides.some(o =>
       o.type === 'exclude' &&
       o.employeeId === emp.id &&
+      o.day === shift.day &&
       (o.shiftType === 'any' || o.shiftType === shift.type)
     );
     if (isExcluded) continue;
@@ -1108,13 +1220,23 @@ function assignShift(
     // Check if already assigned today
     if (assignments.some(a => a.employeeId === emp.id && a.date === date)) return false;
 
-    // Check if excluded
-    const isExcluded = overrides.some(o =>
+    // Check if excluded - must match employee, day, AND shift type
+    const matchingExclude = overrides.find(o =>
       o.type === 'exclude' &&
       o.employeeId === emp.id &&
+      o.day === shift.day &&
       (o.shiftType === 'any' || o.shiftType === shift.type)
     );
-    if (isExcluded) return false;
+    if (matchingExclude) {
+      console.log(`[EXCLUDE APPLIED] ${emp.name} excluded on ${shift.day} (shift type: ${shift.type}) by override:`, matchingExclude);
+      return false;
+    }
+
+    // Also log when checking exclusion but NOT finding a match (for debugging)
+    const anyExcludeForEmp = overrides.filter(o => o.type === 'exclude' && o.employeeId === emp.id);
+    if (anyExcludeForEmp.length > 0) {
+      console.log(`[EXCLUDE CHECK] ${emp.name} has ${anyExcludeForEmp.length} exclude rules but none match ${shift.day}/${shift.type}:`, anyExcludeForEmp);
+    }
 
     // Check restrictions (no_before, no_after, unavailable_range)
     const restrictionCheck = checkRestrictions(emp, shift.day, shift.startTime, shift.endTime);
@@ -1123,15 +1245,60 @@ function assignShift(
       return false;
     }
 
+    // Check permanent rules (never_schedule, only_available)
+    const permanentRuleCheck = checkPermanentRules(emp, shift.day, shift.startTime, shift.endTime);
+    if (!permanentRuleCheck.allowed) {
+      console.log(`Permanent rule blocked: ${permanentRuleCheck.reason}`);
+      return false;
+    }
+
+    // Check minimum shift duration for servers
+    const minDurationCheck = checkMinimumShiftDuration(emp, shift.startTime, shift.endTime);
+    if (!minDurationCheck.allowed) {
+      console.log(`Min duration blocked: ${minDurationCheck.reason}`);
+      return false;
+    }
+
     // Check availability
     const dayKey = shift.day as keyof typeof emp.availability;
     const dayAvail = emp.availability[dayKey];
-    if (!dayAvail || !dayAvail.available) return false;
 
-    // Check if shift type matches availability
-    const shiftMatch = dayAvail.shifts.some(s =>
-      s.type === 'any' || s.type === shift.type
-    );
+    // Debug logging for availability issues
+    if (emp.name.toLowerCase() === 'heidi' || emp.name.toLowerCase() === 'ali') {
+      console.log(`[DEBUG] ${emp.name} availability check for ${shift.day}:`, {
+        dayAvail: JSON.stringify(dayAvail),
+        available: dayAvail?.available,
+        shifts: dayAvail?.shifts
+      });
+    }
+
+    if (!dayAvail || !dayAvail.available) {
+      if (emp.name.toLowerCase() === 'heidi' || emp.name.toLowerCase() === 'ali') {
+        console.log(`[DEBUG] ${emp.name} BLOCKED on ${shift.day} - not available`);
+      }
+      return false;
+    }
+
+    // Check if shift fits within employee's availability time window
+    const shiftStartMins = timeToMinutes(shift.startTime);
+    const shiftEndMins = timeToMinutes(shift.endTime);
+
+    const shiftMatch = dayAvail.shifts.some(s => {
+      // Check shift type matches
+      if (s.type !== 'any' && s.type !== shift.type) return false;
+
+      // Check time constraints if specified
+      if (s.startTime) {
+        const availStartMins = timeToMinutes(s.startTime);
+        if (shiftStartMins < availStartMins) return false;
+      }
+      if (s.endTime) {
+        const availEndMins = timeToMinutes(s.endTime);
+        if (shiftEndMins > availEndMins) return false;
+      }
+
+      return true;
+    });
 
     return shiftMatch;
   });

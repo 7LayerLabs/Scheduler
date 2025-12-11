@@ -2,7 +2,7 @@ import { ScheduleOverride, DayOfWeek, Employee } from './types';
 import { employees as defaultEmployees } from './employees';
 
 // Parse natural language notes into schedule overrides
-export function parseScheduleNotes(notes: string, employeeList?: Employee[], weekStart?: Date): ScheduleOverride[] {
+export function parseScheduleNotes(notes: string, employeeList?: Employee[]): ScheduleOverride[] {
   const employees = employeeList || defaultEmployees;
   const overrides: ScheduleOverride[] = [];
 
@@ -19,7 +19,7 @@ export function parseScheduleNotes(notes: string, employeeList?: Employee[], wee
     console.log('Processing sentence:', sentence);
 
     // First try to parse as a business-wide rule (CLOSED, closing early, etc.)
-    const businessRule = parseBusinessRule(sentence, weekStart);
+    const businessRule = parseBusinessRule(sentence);
     console.log('Business rule result:', businessRule);
     if (businessRule) {
       overrides.push(...businessRule);
@@ -27,7 +27,7 @@ export function parseScheduleNotes(notes: string, employeeList?: Employee[], wee
     }
 
     // Then try employee-specific rules
-    const parsed = parseSentence(sentence, employees, weekStart);
+    const parsed = parseSentence(sentence, employees);
     console.log('Employee rule result:', parsed);
     if (parsed) {
       overrides.push(...parsed);
@@ -40,11 +40,11 @@ export function parseScheduleNotes(notes: string, employeeList?: Employee[], wee
 
 // Parse business-wide rules like "December 24 closing at 2pm" or "December 25 CLOSED"
 // Also handles: "Closed Wednesday, December 24 at 2pm", "Closed all day Thursday"
-function parseBusinessRule(sentence: string, weekStart?: Date): ScheduleOverride[] | null {
+function parseBusinessRule(sentence: string): ScheduleOverride[] | null {
   const lowerSentence = sentence.toLowerCase();
 
   // Find if there's a specific date mentioned
-  const dateInfo = findSpecificDate(sentence, weekStart);
+  const dateInfo = findSpecificDate(sentence);
   console.log('findSpecificDate for:', sentence, '=> result:', dateInfo);
   if (!dateInfo) return null;
 
@@ -108,7 +108,7 @@ function parseBusinessRule(sentence: string, weekStart?: Date): ScheduleOverride
 }
 
 // Find specific date in sentence (December 24, Dec 24, 12/24, etc.)
-function findSpecificDate(sentence: string, weekStart?: Date): { day: DayOfWeek; date: string } | null {
+function findSpecificDate(sentence: string): { day: DayOfWeek; date: string } | null {
   const lowerSentence = sentence.toLowerCase();
 
   // Month names and abbreviations
@@ -179,7 +179,7 @@ function findSpecificDate(sentence: string, weekStart?: Date): { day: DayOfWeek;
   return { day: dayName, date: dateStr };
 }
 
-function parseSentence(sentence: string, employees: Employee[], weekStart?: Date): ScheduleOverride[] | null {
+function parseSentence(sentence: string, employees: Employee[]): ScheduleOverride[] | null {
   const overrides: ScheduleOverride[] = [];
 
   // Find employee name in sentence
@@ -315,10 +315,10 @@ function normalizeTime(hour: number, minutes: string): string {
 function findEmployee(sentence: string, employees: Employee[]): { id: string; name: string } | null {
   const lowerSentence = sentence.toLowerCase();
 
-  // Handle nicknames/variations - maps employee ID to all possible name variations
+  // Handle nicknames/variations - maps employee name (lowercase) to all possible name variations
   // Priority order matters: more specific matches come first
   const nicknames: Record<string, string[]> = {
-    'krisann': ['kris ann', 'kris-ann', 'chris-ann', 'chrisann', 'chris ann', 'krisann', 'ka'],
+    'kris ann': ['kris ann', 'kris-ann', 'chris-ann', 'chrisann', 'chris ann', 'krisann', 'ka'],
     'kim': ['kimmy', 'kimmie'],
     'ali': ['allie', 'ally'],
     'heidi': ['hei'],
@@ -328,8 +328,8 @@ function findEmployee(sentence: string, employees: Employee[]): { id: string; na
     'lisa': ['lis'],
     'kendall': ['ken', 'kenny', 'kend'],
     'kathy': ['kath', 'kat'],
-    'bellas': ['bella s', 'bella-s'],
-    'bellaq': ['bella q', 'bella-q'],
+    'bella s': ['bella s', 'bella-s'],
+    'bella q': ['bella q', 'bella-q'],
   };
 
   // Short/ambiguous names that need word boundary matching
@@ -347,9 +347,10 @@ function findEmployee(sentence: string, employees: Employee[]): { id: string; na
 
   // Second pass: check specific nicknames (multi-word nicknames first)
   for (const emp of employees) {
-    if (nicknames[emp.id]) {
+    const empNameLower = emp.name.toLowerCase();
+    if (nicknames[empNameLower]) {
       // Sort by length descending to match longer/more specific names first
-      const sortedNicks = [...nicknames[emp.id]].sort((a, b) => b.length - a.length);
+      const sortedNicks = [...nicknames[empNameLower]].sort((a, b) => b.length - a.length);
       for (const nick of sortedNicks) {
         // Skip ambiguous single-word names in this pass
         if (ambiguousNames.includes(nick)) continue;

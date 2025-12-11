@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { WeeklyStaffingNeeds, DayStaffing, StaffingSlot } from '@/lib/types';
+import { WeeklyStaffingNeeds, StaffingSlot } from '@/lib/types';
 
 interface Props {
   weekStart: Date;

@@ -4,7 +4,6 @@ import { useState } from 'react';
 import {
   useAllUsers,
   createUserProfile,
-  updateUserProfile,
   useTimeOffRequests,
   useShiftSwapRequests,
   updateTimeOffRequestStatus,
@@ -189,6 +188,7 @@ function UsersTab({
                       user.role === 'manager' ? 'bg-[#e5a825] text-[#0d0d0f]' : 'bg-[#3b82f6] text-white'
                     }`}>
                       {isCurrentUser && profilePicUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img src={profilePicUrl} alt="Profile" className="w-full h-full object-cover" />
                       ) : (
                         user.name.charAt(0).toUpperCase()

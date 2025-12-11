@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { WeeklySchedule, Employee, ScheduleAssignment } from '@/lib/types';
+import { WeeklySchedule, Employee, ScheduleAssignment, WeeklyStaffingNeeds, StaffingSlot } from '@/lib/types';
+import UserManagement from './UserManagement';
+import { User } from '@/lib/instantdb';
 
 export interface AppSettings {
   // Business Settings
@@ -18,6 +20,7 @@ export interface AppSettings {
   minRestBetweenShifts: number;
   bartendingThreshold: number;
   aloneThreshold: number;
+  minShiftHours: number; // Minimum hours per shift (default 3)
 
   // Display Preferences
   timeFormat: '12h' | '24h';
@@ -34,6 +37,16 @@ interface Props {
   formatWeekRange?: (date: Date) => string;
   logoUrl?: string | null;
   onLogoChange?: (url: string | null) => void;
+  onSyncEmployees?: () => void;
+  missingEmployeeCount?: number;
+  // User management props
+  currentUser?: User;
+  profilePicUrl?: string | null;
+  // Staffing needs props
+  staffingNeeds?: WeeklyStaffingNeeds;
+  setStaffingNeeds?: (needs: WeeklyStaffingNeeds) => void;
+  saveAsDefaultTemplate?: () => void;
+  showSavedDefaultMessage?: boolean;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -52,17 +65,21 @@ const DEFAULT_SETTINGS: AppSettings = {
   minRestBetweenShifts: 8,
   bartendingThreshold: 3,
   aloneThreshold: 3,
+  minShiftHours: 3,
   timeFormat: '12h',
   weekStartDay: 'monday',
 };
 
 export { DEFAULT_SETTINGS };
 
-export default function SettingsView({ settings, onUpdateSettings, onExportSchedule, schedule, employees, weekStart, formatWeekRange, logoUrl, onLogoChange }: Props) {
+export default function SettingsView({ settings, onUpdateSettings, onExportSchedule, schedule, employees, weekStart, formatWeekRange, logoUrl, onLogoChange, onSyncEmployees, missingEmployeeCount, currentUser, profilePicUrl, staffingNeeds, setStaffingNeeds, saveAsDefaultTemplate, showSavedDefaultMessage }: Props) {
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
   const [hasChanges, setHasChanges] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const [copiedHours, setCopiedHours] = useState<{ open: string; close: string } | null>(null);
+  const [activeSection, setActiveSection] = useState<'general' | 'staffing' | 'users'>('general');
+  const [copiedDay, setCopiedDay] = useState<{ slots: StaffingSlot[]; notes?: string; fromDay: string } | null>(null);
+  const [copiedSlot, setCopiedSlot] = useState<{ startTime: string; endTime: string; label: string } | null>(null);
 
   const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     setLocalSettings(prev => ({ ...prev, [key]: value }));
@@ -346,15 +363,31 @@ export default function SettingsView({ settings, onUpdateSettings, onExportSched
       </html>
     `;
 
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open('', '_blank', 'width=1000,height=700');
     if (printWindow) {
       printWindow.document.write(printContent);
       printWindow.document.close();
       printWindow.focus();
       setTimeout(() => {
         printWindow.print();
-        printWindow.close();
-      }, 250);
+      }, 500);
+    } else {
+      // Fallback if popup blocked - use iframe
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'absolute';
+      iframe.style.top = '-9999px';
+      iframe.style.left = '-9999px';
+      document.body.appendChild(iframe);
+
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (iframeDoc) {
+        iframeDoc.write(printContent);
+        iframeDoc.close();
+        setTimeout(() => {
+          iframe.contentWindow?.print();
+          document.body.removeChild(iframe);
+        }, 500);
+      }
     }
   };
 
@@ -378,13 +411,13 @@ export default function SettingsView({ settings, onUpdateSettings, onExportSched
           <p className="text-sm text-[#6b6b75] mt-1">Configure your scheduling preferences</p>
         </div>
         <div className="flex items-center gap-3">
-          {showSaved && (
+          {showSaved && activeSection === 'general' && (
             <span className="text-sm text-[#22c55e] flex items-center gap-1">
               <CheckIcon className="w-4 h-4" />
               Saved!
             </span>
           )}
-          {hasChanges && (
+          {hasChanges && activeSection === 'general' && (
             <button
               onClick={handleSave}
               className="px-4 py-2 bg-[#e5a825] text-[#0d0d0f] rounded-lg font-medium hover:bg-[#f5b835] transition-colors"
@@ -395,6 +428,75 @@ export default function SettingsView({ settings, onUpdateSettings, onExportSched
         </div>
       </div>
 
+      {/* Settings Tabs */}
+      <div className="flex gap-2 border-b border-[#2a2a32] pb-0">
+        <button
+          onClick={() => setActiveSection('general')}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+            activeSection === 'general'
+              ? 'bg-[#1a1a1f] text-[#e5a825] border border-[#2a2a32] border-b-[#1a1a1f] -mb-px'
+              : 'text-[#6b6b75] hover:text-white'
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <SettingsGearIcon className="w-4 h-4" />
+            General
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveSection('staffing')}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+            activeSection === 'staffing'
+              ? 'bg-[#1a1a1f] text-[#e5a825] border border-[#2a2a32] border-b-[#1a1a1f] -mb-px'
+              : 'text-[#6b6b75] hover:text-white'
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <GridIcon className="w-4 h-4" />
+            Staffing
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveSection('users')}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+            activeSection === 'users'
+              ? 'bg-[#1a1a1f] text-[#e5a825] border border-[#2a2a32] border-b-[#1a1a1f] -mb-px'
+              : 'text-[#6b6b75] hover:text-white'
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <UserGroupIcon className="w-4 h-4" />
+            Users
+          </span>
+        </button>
+      </div>
+
+      {/* Users Section */}
+      {activeSection === 'users' && currentUser && employees && (
+        <UserManagement
+          currentUser={currentUser}
+          employees={employees}
+          profilePicUrl={profilePicUrl}
+        />
+      )}
+
+      {/* Staffing Section */}
+      {activeSection === 'staffing' && staffingNeeds && setStaffingNeeds && (
+        <StaffingSection
+          staffingNeeds={staffingNeeds}
+          setStaffingNeeds={setStaffingNeeds}
+          saveAsDefaultTemplate={saveAsDefaultTemplate}
+          showSavedDefaultMessage={showSavedDefaultMessage}
+          copiedDay={copiedDay}
+          setCopiedDay={setCopiedDay}
+          copiedSlot={copiedSlot}
+          setCopiedSlot={setCopiedSlot}
+        />
+      )}
+
+      {/* General Settings */}
+      {activeSection === 'general' && (
+        <>
       {/* Business Settings */}
       <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-6">
         <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
@@ -424,6 +526,7 @@ export default function SettingsView({ settings, onUpdateSettings, onExportSched
               {/* Current Logo Preview */}
               <div className="w-16 h-16 bg-[#e5a825] rounded-xl flex items-center justify-center shadow-lg overflow-hidden">
                 {logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
                 ) : (
                   <span className="text-[#0d0d0f] font-bold text-2xl">B</span>
@@ -631,6 +734,22 @@ export default function SettingsView({ settings, onUpdateSettings, onExportSched
             </select>
             <p className="text-xs text-[#6b6b75] mt-1">Rating needed for an employee to work alone</p>
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[#a0a0a8] mb-2">
+              Minimum Shift Hours
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="8"
+              step="0.5"
+              value={localSettings.minShiftHours}
+              onChange={(e) => updateSetting('minShiftHours', parseFloat(e.target.value) || 3)}
+              className="w-full max-w-[120px] px-4 py-2 bg-[#141417] border border-[#2a2a32] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
+            />
+            <p className="text-xs text-[#6b6b75] mt-1">Servers must work at least this many hours per shift</p>
+          </div>
         </div>
       </div>
 
@@ -728,6 +847,15 @@ export default function SettingsView({ settings, onUpdateSettings, onExportSched
         </h2>
 
         <div className="flex flex-wrap gap-3">
+          {onSyncEmployees && missingEmployeeCount !== undefined && missingEmployeeCount > 0 && (
+            <button
+              onClick={onSyncEmployees}
+              className="px-4 py-2 bg-[#e5a825] text-[#0d0d0f] rounded-lg font-medium hover:bg-[#f0b429] transition-colors flex items-center gap-2"
+            >
+              <SyncIcon className="w-4 h-4" />
+              Sync Missing Employees ({missingEmployeeCount})
+            </button>
+          )}
           {onExportSchedule && (
             <button
               onClick={onExportSchedule}
@@ -753,6 +881,8 @@ export default function SettingsView({ settings, onUpdateSettings, onExportSched
           </button>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }
@@ -802,6 +932,14 @@ function DataIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+    </svg>
+  );
+}
+
+function SyncIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
     </svg>
   );
 }
@@ -859,5 +997,354 @@ function UploadIcon({ className }: { className?: string }) {
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
     </svg>
+  );
+}
+
+function SettingsGearIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  );
+}
+
+function UserGroupIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+    </svg>
+  );
+}
+
+function GridIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+    </svg>
+  );
+}
+
+function PlusIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+    </svg>
+  );
+}
+
+function XIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  );
+}
+
+function SaveIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+    </svg>
+  );
+}
+
+// Staffing Section Component
+interface StaffingSectionProps {
+  staffingNeeds: WeeklyStaffingNeeds;
+  setStaffingNeeds: (needs: WeeklyStaffingNeeds) => void;
+  saveAsDefaultTemplate?: () => void;
+  showSavedDefaultMessage?: boolean;
+  copiedDay: { slots: StaffingSlot[]; notes?: string; fromDay: string } | null;
+  setCopiedDay: (day: { slots: StaffingSlot[]; notes?: string; fromDay: string } | null) => void;
+  copiedSlot: { startTime: string; endTime: string; label: string } | null;
+  setCopiedSlot: (slot: { startTime: string; endTime: string; label: string } | null) => void;
+}
+
+function StaffingSection({ staffingNeeds, setStaffingNeeds, saveAsDefaultTemplate, showSavedDefaultMessage, copiedDay, setCopiedDay, copiedSlot, setCopiedSlot }: StaffingSectionProps) {
+  const days: { key: keyof WeeklyStaffingNeeds; label: string; fullLabel: string }[] = [
+    { key: 'tuesday', label: 'Tue', fullLabel: 'Tuesday' },
+    { key: 'wednesday', label: 'Wed', fullLabel: 'Wednesday' },
+    { key: 'thursday', label: 'Thu', fullLabel: 'Thursday' },
+    { key: 'friday', label: 'Fri', fullLabel: 'Friday' },
+    { key: 'saturday', label: 'Sat', fullLabel: 'Saturday' },
+    { key: 'sunday', label: 'Sun', fullLabel: 'Sunday' },
+  ];
+
+  const formatTimeDisplay = (time: string) => {
+    if (!time) return '--:--';
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+    return `${hour12}:${minutes} ${ampm}`;
+  };
+
+  const copyDay = (day: keyof WeeklyStaffingNeeds) => {
+    const dayData = staffingNeeds[day];
+    setCopiedDay({
+      slots: dayData.slots || [],
+      notes: dayData.notes,
+      fromDay: day
+    });
+  };
+
+  const pasteDay = (day: keyof WeeklyStaffingNeeds) => {
+    if (!copiedDay) return;
+    const newNeeds = { ...staffingNeeds };
+    const newSlots = copiedDay.slots.map((slot, idx) => ({
+      ...slot,
+      id: `${day}-${Date.now()}-${idx}`
+    }));
+    newNeeds[day] = {
+      ...newNeeds[day],
+      slots: newSlots,
+      notes: copiedDay.notes
+    };
+    setStaffingNeeds(newNeeds);
+  };
+
+  const getSlotLabel = (index: number): string => {
+    const labels = ['Opener', '2nd Server', 'Bar', '3rd Server', '4th Server', '5th Server', '6th Server'];
+    return labels[index] || `Server ${index + 1}`;
+  };
+
+  const addSlot = (day: keyof WeeklyStaffingNeeds) => {
+    const newNeeds = { ...staffingNeeds };
+    const dayData = newNeeds[day];
+    const slots = dayData.slots || [];
+    const newSlot: StaffingSlot = {
+      id: `${day}-${Date.now()}`,
+      startTime: '09:00',
+      endTime: '17:00',
+      label: getSlotLabel(slots.length)
+    };
+    newNeeds[day] = { ...dayData, slots: [...slots, newSlot] };
+    setStaffingNeeds(newNeeds);
+  };
+
+  const removeSlot = (day: keyof WeeklyStaffingNeeds, slotId: string) => {
+    const newNeeds = { ...staffingNeeds };
+    const dayData = newNeeds[day];
+    const slots = (dayData.slots || []).filter(s => s.id !== slotId);
+    newNeeds[day] = { ...dayData, slots };
+    setStaffingNeeds(newNeeds);
+  };
+
+  const updateSlot = (day: keyof WeeklyStaffingNeeds, slotId: string, field: keyof StaffingSlot, value: string) => {
+    const newNeeds = { ...staffingNeeds };
+    const dayData = newNeeds[day];
+    const slots = (dayData.slots || []).map(s =>
+      s.id === slotId ? { ...s, [field]: value } : s
+    );
+    newNeeds[day] = { ...dayData, slots };
+    setStaffingNeeds(newNeeds);
+  };
+
+  const copySlot = (slot: StaffingSlot) => {
+    setCopiedSlot({ startTime: slot.startTime, endTime: slot.endTime, label: slot.label || '' });
+  };
+
+  const pasteSlot = (day: keyof WeeklyStaffingNeeds) => {
+    if (!copiedSlot) return;
+    const newNeeds = { ...staffingNeeds };
+    const dayData = newNeeds[day];
+    const slots = dayData.slots || [];
+    const newSlot: StaffingSlot = {
+      id: `${day}-${Date.now()}`,
+      startTime: copiedSlot.startTime,
+      endTime: copiedSlot.endTime,
+      label: copiedSlot.label
+    };
+    newNeeds[day] = { ...dayData, slots: [...slots, newSlot] };
+    setStaffingNeeds(newNeeds);
+  };
+
+  const updateDayNotes = (day: keyof WeeklyStaffingNeeds, dayNotes: string) => {
+    const newNeeds = { ...staffingNeeds };
+    newNeeds[day] = { ...newNeeds[day], notes: dayNotes };
+    setStaffingNeeds(newNeeds);
+  };
+
+  const getTotalSlots = () => {
+    return Object.values(staffingNeeds).reduce((sum, day) => sum + (day.slots?.length || 0), 0);
+  };
+
+  return (
+    <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+          <GridIcon className="w-5 h-5 text-[#e5a825]" />
+          Staffing Needs
+        </h2>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-[#a0a0a8]">
+            {getTotalSlots()} total slots
+          </span>
+          {saveAsDefaultTemplate && (
+            <button
+              onClick={saveAsDefaultTemplate}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
+                showSavedDefaultMessage
+                  ? 'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
+                  : 'bg-[#a855f7]/10 text-[#a855f7] border border-[#a855f7]/30 hover:bg-[#a855f7]/20 hover:border-[#a855f7]/50'
+              }`}
+              title="Save current staffing setup as the default for new weeks"
+            >
+              {showSavedDefaultMessage ? (
+                <>
+                  <CheckIcon className="w-3.5 h-3.5" />
+                  Saved!
+                </>
+              ) : (
+                <>
+                  <SaveIcon className="w-3.5 h-3.5" />
+                  Save as Default
+                </>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Day Cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {days.map(({ key, fullLabel }) => {
+          const dayData = staffingNeeds[key];
+          const slots = dayData.slots || [];
+
+          return (
+            <div key={key} className="bg-[#141417] rounded-xl border border-[#2a2a32] p-4 hover:border-[#3a3a45] transition-colors">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-base font-semibold text-white">{fullLabel}</h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => copyDay(key)}
+                    className="p-1.5 text-[#6b6b75] hover:text-[#3b82f6] hover:bg-[#3b82f6]/10 rounded-lg transition-colors"
+                    title="Copy this day's slots"
+                  >
+                    <CopyIcon className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => pasteDay(key)}
+                    disabled={!copiedDay}
+                    className={`p-1.5 rounded-lg transition-colors ${copiedDay
+                      ? 'text-[#6b6b75] hover:text-[#22c55e] hover:bg-[#22c55e]/10'
+                      : 'text-[#3a3a45] cursor-not-allowed'
+                      }`}
+                    title={copiedDay ? `Paste from ${copiedDay.fromDay}` : 'Copy a day first'}
+                  >
+                    <PasteIcon className="w-4 h-4" />
+                  </button>
+                  <span className="text-xs font-medium text-[#6b6b75] bg-[#0d0d0f] px-2 py-1 rounded-full border border-[#2a2a32]">
+                    {slots.length} slot{slots.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+              </div>
+
+              {/* Time Slots */}
+              <div className="space-y-2 mb-3">
+                {slots.map((slot, index) => (
+                  <div key={slot.id} className="flex items-center gap-2 p-2 bg-[#0d0d0f] rounded-lg border border-[#2a2a32]">
+                    <span className="text-xs font-medium text-[#6b6b75] w-5">{index + 1}.</span>
+
+                    <input
+                      type="text"
+                      value={slot.label || ''}
+                      onChange={(e) => updateSlot(key, slot.id, 'label', e.target.value)}
+                      placeholder="Label"
+                      className="flex-1 px-2 py-1 text-sm bg-[#141417] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825] placeholder:text-[#6b6b75]"
+                    />
+
+                    <input
+                      type="time"
+                      value={slot.startTime}
+                      onChange={(e) => updateSlot(key, slot.id, 'startTime', e.target.value)}
+                      className="px-2 py-1 text-sm bg-[#141417] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
+                    />
+                    <span className="text-[#6b6b75] text-xs">to</span>
+                    <input
+                      type="time"
+                      value={slot.endTime}
+                      onChange={(e) => updateSlot(key, slot.id, 'endTime', e.target.value)}
+                      className="px-2 py-1 text-sm bg-[#141417] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
+                    />
+
+                    <span className="text-xs text-[#6b6b75] w-24 text-right hidden xl:block">
+                      {formatTimeDisplay(slot.startTime)} - {formatTimeDisplay(slot.endTime)}
+                    </span>
+
+                    <button
+                      onClick={() => copySlot(slot)}
+                      className="p-1 text-[#6b6b75] hover:text-[#3b82f6] hover:bg-[#3b82f6]/10 rounded transition-colors"
+                      title="Copy this slot"
+                    >
+                      <CopyIcon className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      onClick={() => removeSlot(key, slot.id)}
+                      className="p-1 text-[#6b6b75] hover:text-[#ef4444] hover:bg-[#ef4444]/10 rounded transition-colors"
+                      title="Remove slot"
+                    >
+                      <XIcon className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => addSlot(key)}
+                    className="flex-1 py-2 px-3 border-2 border-dashed border-[#2a2a32] rounded-lg text-sm text-[#6b6b75] hover:border-[#e5a825] hover:text-[#e5a825] hover:bg-[#e5a825]/5 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <PlusIcon className="w-4 h-4" />
+                    Add Slot
+                  </button>
+                  {copiedSlot && (
+                    <button
+                      onClick={() => pasteSlot(key)}
+                      className="py-2 px-3 border-2 border-dashed border-[#22c55e]/50 rounded-lg text-sm text-[#22c55e] hover:border-[#22c55e] hover:bg-[#22c55e]/10 transition-colors flex items-center justify-center gap-2"
+                      title={`Paste: ${copiedSlot.label} (${copiedSlot.startTime}-${copiedSlot.endTime})`}
+                    >
+                      <PasteIcon className="w-4 h-4" />
+                      Paste
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Day Notes */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-medium text-[#6b6b75]">
+                    Notes for this day
+                  </label>
+                  {dayData.notes && (
+                    <button
+                      onClick={() => updateDayNotes(key, '')}
+                      className="text-xs text-[#ef4444] hover:text-[#f87171] transition-colors flex items-center gap-1"
+                    >
+                      <XIcon className="w-3 h-3" />
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <textarea
+                  value={dayData.notes || ''}
+                  onChange={(e) => updateDayNotes(key, e.target.value)}
+                  placeholder="Add notes here..."
+                  rows={2}
+                  className="w-full px-3 py-2 text-sm bg-[#0d0d0f] border border-[#2a2a32] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825] resize-none placeholder:text-[#6b6b75]"
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="text-xs text-[#6b6b75] mt-4">
+        Changes take effect when you regenerate the schedule.
+      </p>
+    </div>
   );
 }
