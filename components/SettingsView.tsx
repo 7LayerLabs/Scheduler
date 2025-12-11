@@ -1061,63 +1061,56 @@ interface StaffingSectionProps {
   setCopiedSlot: (slot: { startTime: string; endTime: string; label: string } | null) => void;
 }
 
-function StaffingSection({ staffingNeeds, setStaffingNeeds, saveAsDefaultTemplate, showSavedDefaultMessage, copiedDay, setCopiedDay, copiedSlot, setCopiedSlot }: StaffingSectionProps) {
-  const days: { key: keyof WeeklyStaffingNeeds; label: string; fullLabel: string }[] = [
-    { key: 'tuesday', label: 'Tue', fullLabel: 'Tuesday' },
-    { key: 'wednesday', label: 'Wed', fullLabel: 'Wednesday' },
-    { key: 'thursday', label: 'Thu', fullLabel: 'Thursday' },
-    { key: 'friday', label: 'Fri', fullLabel: 'Friday' },
-    { key: 'saturday', label: 'Sat', fullLabel: 'Saturday' },
-    { key: 'sunday', label: 'Sun', fullLabel: 'Sunday' },
+function StaffingSection({ staffingNeeds, setStaffingNeeds, saveAsDefaultTemplate, showSavedDefaultMessage, copiedDay, setCopiedDay }: StaffingSectionProps) {
+  const [selectedDay, setSelectedDay] = useState<keyof WeeklyStaffingNeeds>('tuesday');
+  const [expandedDays, setExpandedDays] = useState<Set<keyof WeeklyStaffingNeeds>>(new Set(['tuesday']));
+
+  const days: { key: keyof WeeklyStaffingNeeds; label: string }[] = [
+    { key: 'tuesday', label: 'Tue' },
+    { key: 'wednesday', label: 'Wed' },
+    { key: 'thursday', label: 'Thu' },
+    { key: 'friday', label: 'Fri' },
+    { key: 'saturday', label: 'Sat' },
+    { key: 'sunday', label: 'Sun' },
   ];
 
-  const formatTimeDisplay = (time: string) => {
-    if (!time) return '--:--';
+  const formatTime = (time: string) => {
+    if (!time) return '--';
     const [hours, minutes] = time.split(':');
     const hour = parseInt(hours, 10);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const ampm = hour >= 12 ? 'p' : 'a';
     const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-    return `${hour12}:${minutes} ${ampm}`;
+    return `${hour12}:${minutes}${ampm}`;
   };
 
-  const copyDay = (day: keyof WeeklyStaffingNeeds) => {
-    const dayData = staffingNeeds[day];
-    setCopiedDay({
-      slots: dayData.slots || [],
-      notes: dayData.notes,
-      fromDay: day
-    });
+  const getShiftDuration = (start: string, end: string) => {
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    const hours = (eh * 60 + em - sh * 60 - sm) / 60;
+    return hours.toFixed(1);
   };
 
-  const pasteDay = (day: keyof WeeklyStaffingNeeds) => {
-    if (!copiedDay) return;
-    const newNeeds = { ...staffingNeeds };
-    const newSlots = copiedDay.slots.map((slot, idx) => ({
-      ...slot,
-      id: `${day}-${Date.now()}-${idx}`
-    }));
-    newNeeds[day] = {
-      ...newNeeds[day],
-      slots: newSlots,
-      notes: copiedDay.notes
-    };
-    setStaffingNeeds(newNeeds);
-  };
-
-  const getSlotLabel = (index: number): string => {
-    const labels = ['Opener', '2nd Server', 'Bar', '3rd Server', '4th Server', '5th Server', '6th Server'];
-    return labels[index] || `Server ${index + 1}`;
+  const toggleDay = (day: keyof WeeklyStaffingNeeds) => {
+    const newExpanded = new Set(expandedDays);
+    if (newExpanded.has(day)) {
+      newExpanded.delete(day);
+    } else {
+      newExpanded.add(day);
+    }
+    setExpandedDays(newExpanded);
+    setSelectedDay(day);
   };
 
   const addSlot = (day: keyof WeeklyStaffingNeeds) => {
     const newNeeds = { ...staffingNeeds };
     const dayData = newNeeds[day];
     const slots = dayData.slots || [];
+    const labels = ['Opener', '2nd Server', 'Bar', '3rd Server', '4th', '5th'];
     const newSlot: StaffingSlot = {
       id: `${day}-${Date.now()}`,
       startTime: '09:00',
       endTime: '17:00',
-      label: getSlotLabel(slots.length)
+      label: labels[slots.length] || `Server ${slots.length + 1}`
     };
     newNeeds[day] = { ...dayData, slots: [...slots, newSlot] };
     setStaffingNeeds(newNeeds);
@@ -1126,225 +1119,257 @@ function StaffingSection({ staffingNeeds, setStaffingNeeds, saveAsDefaultTemplat
   const removeSlot = (day: keyof WeeklyStaffingNeeds, slotId: string) => {
     const newNeeds = { ...staffingNeeds };
     const dayData = newNeeds[day];
-    const slots = (dayData.slots || []).filter(s => s.id !== slotId);
-    newNeeds[day] = { ...dayData, slots };
+    newNeeds[day] = { ...dayData, slots: (dayData.slots || []).filter(s => s.id !== slotId) };
     setStaffingNeeds(newNeeds);
   };
 
   const updateSlot = (day: keyof WeeklyStaffingNeeds, slotId: string, field: keyof StaffingSlot, value: string) => {
     const newNeeds = { ...staffingNeeds };
     const dayData = newNeeds[day];
-    const slots = (dayData.slots || []).map(s =>
-      s.id === slotId ? { ...s, [field]: value } : s
-    );
-    newNeeds[day] = { ...dayData, slots };
-    setStaffingNeeds(newNeeds);
-  };
-
-  const copySlot = (slot: StaffingSlot) => {
-    setCopiedSlot({ startTime: slot.startTime, endTime: slot.endTime, label: slot.label || '' });
-  };
-
-  const pasteSlot = (day: keyof WeeklyStaffingNeeds) => {
-    if (!copiedSlot) return;
-    const newNeeds = { ...staffingNeeds };
-    const dayData = newNeeds[day];
-    const slots = dayData.slots || [];
-    const newSlot: StaffingSlot = {
-      id: `${day}-${Date.now()}`,
-      startTime: copiedSlot.startTime,
-      endTime: copiedSlot.endTime,
-      label: copiedSlot.label
+    newNeeds[day] = {
+      ...dayData,
+      slots: (dayData.slots || []).map(s => s.id === slotId ? { ...s, [field]: value } : s)
     };
-    newNeeds[day] = { ...dayData, slots: [...slots, newSlot] };
     setStaffingNeeds(newNeeds);
   };
 
-  const updateDayNotes = (day: keyof WeeklyStaffingNeeds, dayNotes: string) => {
+  const copyDayToAll = (sourceDay: keyof WeeklyStaffingNeeds) => {
+    const source = staffingNeeds[sourceDay];
     const newNeeds = { ...staffingNeeds };
-    newNeeds[day] = { ...newNeeds[day], notes: dayNotes };
+    days.forEach(({ key }) => {
+      if (key !== sourceDay) {
+        newNeeds[key] = {
+          ...newNeeds[key],
+          slots: source.slots?.map((s, i) => ({ ...s, id: `${key}-${Date.now()}-${i}` })) || []
+        };
+      }
+    });
     setStaffingNeeds(newNeeds);
   };
 
-  const getTotalSlots = () => {
-    return Object.values(staffingNeeds).reduce((sum, day) => sum + (day.slots?.length || 0), 0);
+  const copyDay = (day: keyof WeeklyStaffingNeeds) => {
+    const dayData = staffingNeeds[day];
+    setCopiedDay({ slots: dayData.slots || [], notes: dayData.notes, fromDay: day });
   };
+
+  const pasteDay = (day: keyof WeeklyStaffingNeeds) => {
+    if (!copiedDay) return;
+    const newNeeds = { ...staffingNeeds };
+    newNeeds[day] = {
+      ...newNeeds[day],
+      slots: copiedDay.slots.map((s, i) => ({ ...s, id: `${day}-${Date.now()}-${i}` })),
+      notes: copiedDay.notes
+    };
+    setStaffingNeeds(newNeeds);
+  };
+
+  const getTotalSlots = () => Object.values(staffingNeeds).reduce((sum, day) => sum + (day.slots?.length || 0), 0);
 
   return (
-    <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-          <GridIcon className="w-5 h-5 text-[#e5a825]" />
-          Staffing Needs
-        </h2>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-[#a0a0a8]">
-            {getTotalSlots()} total slots
-          </span>
-          {saveAsDefaultTemplate && (
-            <button
-              onClick={saveAsDefaultTemplate}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
-                showSavedDefaultMessage
-                  ? 'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
-                  : 'bg-[#a855f7]/10 text-[#a855f7] border border-[#a855f7]/30 hover:bg-[#a855f7]/20 hover:border-[#a855f7]/50'
-              }`}
-              title="Save current staffing setup as the default for new weeks"
-            >
-              {showSavedDefaultMessage ? (
-                <>
-                  <CheckIcon className="w-3.5 h-3.5" />
-                  Saved!
-                </>
-              ) : (
-                <>
-                  <SaveIcon className="w-3.5 h-3.5" />
-                  Save as Default
-                </>
-              )}
-            </button>
-          )}
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+              <GridIcon className="w-5 h-5 text-[#e5a825]" />
+              Staffing Template
+            </h2>
+            <p className="text-xs text-[#6b6b75] mt-0.5">{getTotalSlots()} shifts across {days.length} days</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {saveAsDefaultTemplate && (
+              <button
+                onClick={saveAsDefaultTemplate}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
+                  showSavedDefaultMessage
+                    ? 'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
+                    : 'bg-[#e5a825] text-[#0d0d0f] hover:bg-[#f5b835]'
+                }`}
+              >
+                {showSavedDefaultMessage ? (
+                  <><CheckIcon className="w-3.5 h-3.5" /> Saved!</>
+                ) : (
+                  <><SaveIcon className="w-3.5 h-3.5" /> Save as Default</>
+                )}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Day Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {days.map(({ key, fullLabel }) => {
-          const dayData = staffingNeeds[key];
-          const slots = dayData.slots || [];
-
+      {/* Quick Overview - Horizontal Day Pills */}
+      <div className="flex gap-2 overflow-x-auto pb-2">
+        {days.map(({ key, label }) => {
+          const slots = staffingNeeds[key]?.slots || [];
+          const isExpanded = expandedDays.has(key);
           return (
-            <div key={key} className="bg-[#141417] rounded-xl border border-[#2a2a32] p-4 hover:border-[#3a3a45] transition-colors">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-base font-semibold text-white">{fullLabel}</h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => copyDay(key)}
-                    className="p-1.5 text-[#6b6b75] hover:text-[#3b82f6] hover:bg-[#3b82f6]/10 rounded-lg transition-colors"
-                    title="Copy this day's slots"
-                  >
-                    <CopyIcon className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => pasteDay(key)}
-                    disabled={!copiedDay}
-                    className={`p-1.5 rounded-lg transition-colors ${copiedDay
-                      ? 'text-[#6b6b75] hover:text-[#22c55e] hover:bg-[#22c55e]/10'
-                      : 'text-[#3a3a45] cursor-not-allowed'
-                      }`}
-                    title={copiedDay ? `Paste from ${copiedDay.fromDay}` : 'Copy a day first'}
-                  >
-                    <PasteIcon className="w-4 h-4" />
-                  </button>
-                  <span className="text-xs font-medium text-[#6b6b75] bg-[#0d0d0f] px-2 py-1 rounded-full border border-[#2a2a32]">
-                    {slots.length} slot{slots.length !== 1 ? 's' : ''}
-                  </span>
-                </div>
-              </div>
-
-              {/* Time Slots */}
-              <div className="space-y-2 mb-3">
-                {slots.map((slot, index) => (
-                  <div key={slot.id} className="flex items-center gap-2 p-2 bg-[#0d0d0f] rounded-lg border border-[#2a2a32]">
-                    <span className="text-xs font-medium text-[#6b6b75] w-5">{index + 1}.</span>
-
-                    <input
-                      type="text"
-                      value={slot.label || ''}
-                      onChange={(e) => updateSlot(key, slot.id, 'label', e.target.value)}
-                      placeholder="Label"
-                      className="flex-1 px-2 py-1 text-sm bg-[#141417] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825] placeholder:text-[#6b6b75]"
-                    />
-
-                    <input
-                      type="time"
-                      value={slot.startTime}
-                      onChange={(e) => updateSlot(key, slot.id, 'startTime', e.target.value)}
-                      className="px-2 py-1 text-sm bg-[#141417] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
-                    />
-                    <span className="text-[#6b6b75] text-xs">to</span>
-                    <input
-                      type="time"
-                      value={slot.endTime}
-                      onChange={(e) => updateSlot(key, slot.id, 'endTime', e.target.value)}
-                      className="px-2 py-1 text-sm bg-[#141417] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
-                    />
-
-                    <span className="text-xs text-[#6b6b75] w-24 text-right hidden xl:block">
-                      {formatTimeDisplay(slot.startTime)} - {formatTimeDisplay(slot.endTime)}
-                    </span>
-
-                    <button
-                      onClick={() => copySlot(slot)}
-                      className="p-1 text-[#6b6b75] hover:text-[#3b82f6] hover:bg-[#3b82f6]/10 rounded transition-colors"
-                      title="Copy this slot"
-                    >
-                      <CopyIcon className="w-4 h-4" />
-                    </button>
-
-                    <button
-                      onClick={() => removeSlot(key, slot.id)}
-                      className="p-1 text-[#6b6b75] hover:text-[#ef4444] hover:bg-[#ef4444]/10 rounded transition-colors"
-                      title="Remove slot"
-                    >
-                      <XIcon className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => addSlot(key)}
-                    className="flex-1 py-2 px-3 border-2 border-dashed border-[#2a2a32] rounded-lg text-sm text-[#6b6b75] hover:border-[#e5a825] hover:text-[#e5a825] hover:bg-[#e5a825]/5 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <PlusIcon className="w-4 h-4" />
-                    Add Slot
-                  </button>
-                  {copiedSlot && (
-                    <button
-                      onClick={() => pasteSlot(key)}
-                      className="py-2 px-3 border-2 border-dashed border-[#22c55e]/50 rounded-lg text-sm text-[#22c55e] hover:border-[#22c55e] hover:bg-[#22c55e]/10 transition-colors flex items-center justify-center gap-2"
-                      title={`Paste: ${copiedSlot.label} (${copiedSlot.startTime}-${copiedSlot.endTime})`}
-                    >
-                      <PasteIcon className="w-4 h-4" />
-                      Paste
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Day Notes */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-medium text-[#6b6b75]">
-                    Notes for this day
-                  </label>
-                  {dayData.notes && (
-                    <button
-                      onClick={() => updateDayNotes(key, '')}
-                      className="text-xs text-[#ef4444] hover:text-[#f87171] transition-colors flex items-center gap-1"
-                    >
-                      <XIcon className="w-3 h-3" />
-                      Clear
-                    </button>
-                  )}
-                </div>
-                <textarea
-                  value={dayData.notes || ''}
-                  onChange={(e) => updateDayNotes(key, e.target.value)}
-                  placeholder="Add notes here..."
-                  rows={2}
-                  className="w-full px-3 py-2 text-sm bg-[#0d0d0f] border border-[#2a2a32] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825] resize-none placeholder:text-[#6b6b75]"
-                />
-              </div>
-            </div>
+            <button
+              key={key}
+              onClick={() => toggleDay(key)}
+              className={`flex-shrink-0 px-4 py-2 rounded-lg border transition-all ${
+                isExpanded
+                  ? 'bg-[#e5a825]/10 border-[#e5a825] text-[#e5a825]'
+                  : 'bg-[#1a1a1f] border-[#2a2a32] text-[#a0a0a8] hover:border-[#3a3a45]'
+              }`}
+            >
+              <span className="font-medium">{label}</span>
+              <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${isExpanded ? 'bg-[#e5a825]/20' : 'bg-[#2a2a32]'}`}>
+                {slots.length}
+              </span>
+            </button>
           );
         })}
       </div>
 
-      <p className="text-xs text-[#6b6b75] mt-4">
-        Changes take effect when you regenerate the schedule.
-      </p>
+      {/* Expanded Day Editor */}
+      {days.filter(({ key }) => expandedDays.has(key)).map(({ key, label }) => {
+        const dayData = staffingNeeds[key];
+        const slots = dayData?.slots || [];
+
+        return (
+          <div key={key} className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] overflow-hidden">
+            {/* Day Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2a32] bg-[#141417]">
+              <div className="flex items-center gap-3">
+                <h3 className="font-semibold text-white">{label}</h3>
+                <span className="text-xs text-[#6b6b75]">{slots.length} shift{slots.length !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => copyDay(key)}
+                  className="p-1.5 text-[#6b6b75] hover:text-[#3b82f6] hover:bg-[#3b82f6]/10 rounded transition-colors"
+                  title="Copy day"
+                >
+                  <CopyIcon className="w-4 h-4" />
+                </button>
+                {copiedDay && (
+                  <button
+                    onClick={() => pasteDay(key)}
+                    className="p-1.5 text-[#22c55e] hover:bg-[#22c55e]/10 rounded transition-colors"
+                    title={`Paste from ${copiedDay.fromDay}`}
+                  >
+                    <PasteIcon className="w-4 h-4" />
+                  </button>
+                )}
+                <button
+                  onClick={() => copyDayToAll(key)}
+                  className="ml-1 px-2 py-1 text-xs text-[#a855f7] hover:bg-[#a855f7]/10 rounded transition-colors"
+                  title="Apply this day's schedule to all other days"
+                >
+                  Apply to All
+                </button>
+                <button
+                  onClick={() => toggleDay(key)}
+                  className="p-1.5 text-[#6b6b75] hover:text-white hover:bg-[#2a2a32] rounded transition-colors ml-2"
+                >
+                  <XIcon className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Slots Table */}
+            <div className="p-4">
+              {slots.length > 0 ? (
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-xs text-[#6b6b75] border-b border-[#2a2a32]">
+                      <th className="text-left pb-2 font-medium w-8">#</th>
+                      <th className="text-left pb-2 font-medium">Role</th>
+                      <th className="text-left pb-2 font-medium w-28">Start</th>
+                      <th className="text-left pb-2 font-medium w-28">End</th>
+                      <th className="text-left pb-2 font-medium w-16">Hours</th>
+                      <th className="w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {slots.map((slot, index) => (
+                      <tr key={slot.id} className="border-b border-[#2a2a32]/50 last:border-0 group">
+                        <td className="py-2 text-[#6b6b75] text-sm">{index + 1}</td>
+                        <td className="py-2">
+                          <input
+                            type="text"
+                            value={slot.label || ''}
+                            onChange={(e) => updateSlot(key, slot.id, 'label', e.target.value)}
+                            className="w-full px-2 py-1 text-sm bg-transparent border border-transparent hover:border-[#2a2a32] focus:border-[#e5a825] focus:bg-[#141417] rounded text-white focus:outline-none transition-colors"
+                            placeholder="Role name"
+                          />
+                        </td>
+                        <td className="py-2">
+                          <input
+                            type="time"
+                            value={slot.startTime}
+                            onChange={(e) => updateSlot(key, slot.id, 'startTime', e.target.value)}
+                            className="px-2 py-1 text-sm bg-[#141417] border border-[#2a2a32] rounded text-white focus:outline-none focus:border-[#e5a825]"
+                          />
+                        </td>
+                        <td className="py-2">
+                          <input
+                            type="time"
+                            value={slot.endTime}
+                            onChange={(e) => updateSlot(key, slot.id, 'endTime', e.target.value)}
+                            className="px-2 py-1 text-sm bg-[#141417] border border-[#2a2a32] rounded text-white focus:outline-none focus:border-[#e5a825]"
+                          />
+                        </td>
+                        <td className="py-2 text-sm text-[#6b6b75]">
+                          {getShiftDuration(slot.startTime, slot.endTime)}h
+                        </td>
+                        <td className="py-2">
+                          <button
+                            onClick={() => removeSlot(key, slot.id)}
+                            className="p-1 text-[#6b6b75] hover:text-[#ef4444] opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <XIcon className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="text-sm text-[#6b6b75] text-center py-4">No shifts configured</p>
+              )}
+
+              {/* Add Shift Button */}
+              <button
+                onClick={() => addSlot(key)}
+                className="mt-3 w-full py-2 border border-dashed border-[#2a2a32] rounded-lg text-sm text-[#6b6b75] hover:border-[#e5a825] hover:text-[#e5a825] transition-colors flex items-center justify-center gap-2"
+              >
+                <PlusIcon className="w-4 h-4" />
+                Add Shift
+              </button>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Collapsed Days Summary */}
+      {days.filter(({ key }) => !expandedDays.has(key)).length > 0 && (
+        <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            {days.filter(({ key }) => !expandedDays.has(key)).map(({ key, label }) => {
+              const slots = staffingNeeds[key]?.slots || [];
+              return (
+                <button
+                  key={key}
+                  onClick={() => toggleDay(key)}
+                  className="p-3 bg-[#141417] rounded-lg border border-[#2a2a32] hover:border-[#e5a825]/50 transition-colors text-left"
+                >
+                  <div className="font-medium text-white text-sm">{label}</div>
+                  <div className="text-xs text-[#6b6b75] mt-1">
+                    {slots.length} shift{slots.length !== 1 ? 's' : ''}
+                  </div>
+                  {slots.length > 0 && (
+                    <div className="text-xs text-[#6b6b75] mt-0.5">
+                      {formatTime(slots[0].startTime)} - {formatTime(slots[slots.length - 1].endTime)}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -843,8 +843,34 @@ export function generateSchedule(
         employeeShifts,
         dayOverrides
       );
+
+      // Check if shift was filled - add warning if not
+      const shiftAssignments = assignments.filter(a => a.shiftId === shift.id && a.date === dateStr);
+      if (shiftAssignments.length < shift.requiredStaff) {
+        const missing = shift.requiredStaff - shiftAssignments.length;
+        const dayDisplay = day.charAt(0).toUpperCase() + day.slice(1);
+        const timeDisplay = `${formatTime12(shift.startTime)} - ${formatTime12(shift.endTime)}`;
+
+        // Create a conflict for unfilled shifts
+        conflicts.push({
+          type: 'no_coverage',
+          shiftId: shift.id,
+          date: dateStr,
+          message: `${dayDisplay}: ${shift.name || shift.type} (${timeDisplay}) - Need ${missing} more staff`
+        });
+      }
     }
 
+  }
+
+  // Helper function for 12-hour time format
+  function formatTime12(time: string): string {
+    if (!time) return '--';
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+    return `${hour12}:${minutes} ${ampm}`;
   }
 
   // Check for employees not getting enough shifts
