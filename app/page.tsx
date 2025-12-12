@@ -322,7 +322,8 @@ export default function Home() {
         { id: 'sat-1', startTime: '07:15', endTime: '15:00', label: 'Opener' },
         { id: 'sat-2', startTime: '10:00', endTime: '15:00', label: '2nd Server' },
         { id: 'sat-3', startTime: '15:00', endTime: '21:00', label: 'Dinner 1' },
-        { id: 'sat-4', startTime: '17:00', endTime: '21:00', label: 'Dinner 2' },
+        { id: 'sat-4', startTime: '16:00', endTime: '21:00', label: 'Dinner 2' },
+        { id: 'sat-5', startTime: '17:00', endTime: '21:00', label: 'Dinner 3' },
       ],
       notes: ''
     },
