@@ -843,10 +843,10 @@ export function generateSchedule(
     // Get shifts for this day based on staffing needs (new slots format)
     const shifts: Shift[] = [];
 
-    // Fixed shift assignments already made for this day.
-    // When a fixed shift matches a staffing slot (same time range), we should remove that slot,
-    // rather than dropping an arbitrary slot from the end of the day.
-    const fixedShiftAssignmentsForDay = assignments.filter(a => a.date === dateStr && a.shiftId.includes('-fixed-'));
+    // Fixed shift assignments already made for this day (from Set Schedules, Fixed Rules, etc.)
+    // We want to deduct ALL pre-assigned shifts from the staffing slots to prevent double scheduling.
+    const fixedShiftAssignmentsForDay = assignments.filter(a => a.date === dateStr);
+
 
     const fixedShiftWindowsForDay = fixedShiftAssignmentsForDay
       .map(a => ({
@@ -860,20 +860,71 @@ export function generateSchedule(
       if (needs && needs.slots && needs.slots.length > 0) {
         // Prefer removing the specific slot(s) that are already covered by fixed shifts.
         // This prevents accidentally dropping a night slot just because it's later in the list.
+
         const remainingSlots = [...needs.slots];
         const removedSlotIds = new Set<string>();
 
+        // Helper: Calculate overlap score
+        const getOverlapScore = (slot: { startTime: string; endTime: string }, fixed: { startTime: string; endTime: string }): number => {
+          const slotStart = timeToMinutes(slot.startTime);
+          const slotEnd = timeToMinutes(slot.endTime);
+          const fixedStart = timeToMinutes(fixed.startTime);
+          const fixedEnd = timeToMinutes(fixed.endTime);
+
+          const overlapStart = Math.max(slotStart, fixedStart);
+          const overlapEnd = Math.min(slotEnd, fixedEnd);
+
+          if (overlapEnd <= overlapStart) return 0;
+          return overlapEnd - overlapStart;
+        };
+
         for (const fixedWindow of fixedShiftWindowsForDay) {
-          // Try to remove an exact time match first.
-          const exactIdx = remainingSlots.findIndex(slot => {
+          // 1. Try EXACT match first (highest priority)
+          let bestIdx = remainingSlots.findIndex(slot => {
             const clamped = clampShiftToOperatingWindow(day, slot.startTime, slot.endTime);
             if (!clamped) return false;
             return clamped.startTime === fixedWindow.startTime && clamped.endTime === fixedWindow.endTime;
           });
 
-          if (exactIdx !== -1) {
-            const removed = remainingSlots.splice(exactIdx, 1)[0];
+          // 2. If no exact match, try FUZZY match
+          if (bestIdx === -1) {
+            const candidates = remainingSlots.map((slot, idx) => {
+              const clamped = clampShiftToOperatingWindow(day, slot.startTime, slot.endTime);
+              if (!clamped) return { idx, score: -1 };
+
+              const slotStart = timeToMinutes(clamped.startTime);
+              const fixedStart = timeToMinutes(fixedWindow.startTime);
+              const diffStart = Math.abs(slotStart - fixedStart);
+
+              // Must start within 45 mins to be considered a match for this slot
+              if (diffStart > 45) return { idx, score: -1 };
+
+              // Check overlap amount
+              const overlap = getOverlapScore(clamped, fixedWindow);
+              const slotDuration = timeToMinutes(clamped.endTime) - timeToMinutes(clamped.startTime);
+
+              // Must cover at least 50% of the slot OR be a very close start time match (<= 15 mins) with significant overlap
+              if (overlap < slotDuration * 0.5) return { idx, score: -1 };
+
+              // Score is overlap minus start difference penalty
+              // This prefers shifts that cover more of the slot and start closer to the slot time
+              return { idx, score: overlap - (diffStart * 2) };
+            });
+
+            // Find best candidate
+            let bestScore = -1;
+            for (const cand of candidates) {
+              if (cand.score > bestScore) {
+                bestScore = cand.score;
+                bestIdx = cand.idx;
+              }
+            }
+          }
+
+          if (bestIdx !== -1) {
+            const removed = remainingSlots.splice(bestIdx, 1)[0];
             if (removed?.id) removedSlotIds.add(removed.id);
+            console.log(`[SLOT MATCH] Fixed shift ${fixedWindow.startTime}-${fixedWindow.endTime} satisfied slot ${removed.startTime}-${removed.endTime} (${removed.label})`);
             continue;
           }
         }
@@ -1649,7 +1700,7 @@ function assignShift(
 ) {
   // Check if shift is already filled by shift ID
   const currentAssignments = assignments.filter(a => a.shiftId === shift.id && a.date === date);
-  
+
   if (currentAssignments.length >= shift.requiredStaff) {
     return;
   }
