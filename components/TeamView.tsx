@@ -135,7 +135,15 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
       newShifts = currentShifts.filter(s => s.type !== shiftType);
     } else {
       // Add this shift type
-      newShifts = [...currentShifts, { type: shiftType as 'morning' | 'mid' | 'night' | 'any' }];
+      // IMPORTANT: 'any' (Open) and specific types (morning/mid/night) are mutually exclusive
+      if (shiftType === 'any') {
+        // Selecting 'any' replaces all specific types
+        newShifts = [{ type: 'any' as const }];
+      } else {
+        // Selecting a specific type removes 'any' first
+        const withoutAny = currentShifts.filter(s => s.type !== 'any');
+        newShifts = [...withoutAny, { type: shiftType as 'morning' | 'mid' | 'night' }];
+      }
     }
 
     newAvail[day] = {
