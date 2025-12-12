@@ -69,19 +69,27 @@ export default function ScheduleView({
 
   // Local state for notes to handle clearing immediately
   const [localNotes, setLocalNotes] = useState(notes);
-  const justClearedRef = useRef(false);
+  const lastSyncedNotesRef = useRef(notes);
 
   // Sync local notes when DB notes change (e.g., when switching weeks)
-  // But skip if we just cleared notes locally
+  // But only if we're not actively editing (local state matches what we last synced)
   useEffect(() => {
-    if (justClearedRef.current) {
-      justClearedRef.current = false;
-      return;
+    // Only sync from DB if:
+    // 1. The DB value actually changed (not just a re-render)
+    // 2. We're not in the middle of editing (local matches last synced value, or local is empty)
+    const dbChanged = notes !== lastSyncedNotesRef.current;
+    const userIsEditing = localNotes.trim() !== '' && localNotes !== lastSyncedNotesRef.current;
+
+    if (dbChanged && !userIsEditing) {
+      // This is intentional - syncing from external source (DB) to local state
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLocalNotes(notes);
+      lastSyncedNotesRef.current = notes;
+    } else if (dbChanged) {
+      // DB changed but user is editing - just update our ref so we don't overwrite later
+      lastSyncedNotesRef.current = notes;
     }
-    // This is intentional - syncing from external source (DB) to local state
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLocalNotes(notes);
-  }, [notes]);
+  }, [notes, localNotes]);
 
   // Handle notes change - update both local state and DB
   const handleNotesChange = (newNotes: string) => {
@@ -362,10 +370,10 @@ export default function ScheduleView({
       const newDisplay = [...safeWeekLockedRulesDisplay, ...parsedPreview];
       setWeekLockedRules(newRules);
       setWeekLockedRulesDisplay(newDisplay);
-      // Clear input after applying - set flag to prevent re-sync from DB
-      justClearedRef.current = true;
+      // Clear input after applying
       setLocalNotes('');
       setNotes('');
+      lastSyncedNotesRef.current = '';
     }
   };
 
@@ -376,10 +384,10 @@ export default function ScheduleView({
       const newDisplay = [...safePermanentRulesDisplay, ...parsedPreview];
       setPermanentRules(newRules);
       setPermanentRulesDisplay(newDisplay);
-      // Clear input after applying - set flag to prevent re-sync from DB
-      justClearedRef.current = true;
+      // Clear input after applying
       setLocalNotes('');
       setNotes('');
+      lastSyncedNotesRef.current = '';
     }
   };
 
@@ -555,9 +563,9 @@ export default function ScheduleView({
               {localNotes.trim() && (
                 <button
                   onClick={() => {
-                    justClearedRef.current = true;
                     setLocalNotes('');
                     setNotes('');
+                    lastSyncedNotesRef.current = '';
                   }}
                   className="text-xs text-[#ef4444] hover:text-[#f87171] transition-colors"
                 >
