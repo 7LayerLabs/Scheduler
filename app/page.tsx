@@ -27,9 +27,11 @@ import {
   useWeeklyRules,
   updateWeeklyRulesForWeek,
   updateUserProfilePic,
+  saveSchedule,
 } from '@/lib/instantdb';
 import Sidebar from '@/components/Sidebar';
 import ScheduleView from '@/components/ScheduleView';
+import ScheduleHistory from '@/components/ScheduleHistory';
 import TeamView from '@/components/TeamView';
 import NotesAndStaffingView from '@/components/NotesAndStaffingView';
 import SettingsView, { AppSettings, DEFAULT_SETTINGS } from '@/components/SettingsView';
@@ -81,7 +83,7 @@ export default function Home() {
 
   // Overrides (for compatibility)
   const overrides = [...(dbPermanentRules || []), ...(dbRulesByWeek[currentWeekKey] || [])];
-  const setOverrides = () => {}; // No longer needed, rules are managed separately
+  const setOverrides = () => { }; // No longer needed, rules are managed separately
 
   // Permanent rules from InstantDB
   const permanentRules = dbPermanentRules || [];
@@ -480,6 +482,38 @@ export default function Home() {
     await signOut();
   };
 
+  const handleArchiveSchedule = async () => {
+    if (!schedule || !authUser) return;
+    try {
+      await saveSchedule({
+        weekStart: weekStart.toISOString(),
+        assignments: JSON.stringify(schedule.assignments),
+        createdAt: Date.now(),
+        createdBy: authUser.email || 'Unknown',
+      });
+      alert('Schedule archived successfully!');
+    } catch (error) {
+      console.error('Failed to archive schedule:', error);
+      alert('Failed to archive schedule.');
+    }
+  };
+
+  const handleRestoreSchedule = (archivedSchedule: WeeklySchedule) => {
+    // 1. Set the week to match the archive
+    setWeekStart(new Date(archivedSchedule.weekStart));
+
+    // 2. Set the schedule data
+    setSchedule({
+      weekStart: new Date(archivedSchedule.weekStart),
+      assignments: archivedSchedule.assignments,
+      conflicts: [], // We don't store these, will need to re-calc if needed or kept empty
+      warnings: []
+    });
+
+    // 3. Switch to Schedule view
+    setActiveTab('schedule');
+  };
+
   // Handle auth error - show login page instead of being stuck
   if (authError) {
     console.error('Auth error:', authError);
@@ -740,6 +774,14 @@ export default function Home() {
               setPermanentRules={setPermanentRules}
               permanentRulesDisplay={permanentRulesDisplay}
               setPermanentRulesDisplay={setPermanentRulesDisplay}
+              onArchiveSchedule={handleArchiveSchedule}
+            />
+          )}
+
+          {activeTab === 'history' && (
+            <ScheduleHistory
+              employees={employees}
+              onRestore={handleRestoreSchedule}
             />
           )}
 

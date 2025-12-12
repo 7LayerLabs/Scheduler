@@ -4,6 +4,44 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { ScheduleOverride, Employee, WeeklyStaffingNeeds, StaffingSlot } from '@/lib/types';
 import { parseScheduleNotes, formatParsedOverrides } from '@/lib/parseNotes';
 
+interface DebouncedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
+  value: string;
+  onChange: (value: string) => void;
+}
+
+
+function DebouncedInput({ value: initialValue, onChange, ...props }: DebouncedInputProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (inputRef.current && inputRef.current.value !== initialValue) {
+      inputRef.current.value = initialValue;
+    }
+  }, [initialValue]);
+
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    if (e.target.value !== initialValue) {
+      onChange(e.target.value);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur();
+    }
+  };
+
+  return (
+    <input
+      {...props}
+      ref={inputRef}
+      defaultValue={initialValue}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+    />
+  );
+}
+
 interface Props {
   notes: string;
   setNotes: (notes: string) => void;
@@ -86,7 +124,7 @@ export default function NotesAndStaffingView({
   useEffect(() => {
     const allRules = [...permanentRules, ...weekLockedRules];
     setOverrides(allRules);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [permanentRules, weekLockedRules]);
 
   // Apply rules for THIS WEEK ONLY
@@ -370,11 +408,10 @@ Examples:
               <button
                 onClick={handleApplyWeekRules}
                 disabled={parsedPreview.length === 0}
-                className={`p-3 rounded-full transition-all duration-200 ${
-                  parsedPreview.length > 0
-                    ? 'bg-[#e5a825] text-[#0d0d0f] hover:bg-[#f5b835] shadow-lg shadow-[#e5a825]/30 hover:scale-110'
-                    : 'bg-[#2a2a32] text-[#6b6b75] cursor-not-allowed'
-                }`}
+                className={`p-3 rounded-full transition-all duration-200 ${parsedPreview.length > 0
+                  ? 'bg-[#e5a825] text-[#0d0d0f] hover:bg-[#f5b835] shadow-lg shadow-[#e5a825]/30 hover:scale-110'
+                  : 'bg-[#2a2a32] text-[#6b6b75] cursor-not-allowed'
+                  }`}
                 title="Apply rules to this week only"
               >
                 <ArrowRightIcon className="w-5 h-5" />
@@ -389,11 +426,10 @@ Examples:
               <button
                 onClick={handleApplyPermanentRules}
                 disabled={parsedPreview.length === 0}
-                className={`p-3 rounded-full transition-all duration-200 ${
-                  parsedPreview.length > 0
-                    ? 'bg-[#a855f7] text-white hover:bg-[#b975f9] shadow-lg shadow-[#a855f7]/30 hover:scale-110'
-                    : 'bg-[#2a2a32] text-[#6b6b75] cursor-not-allowed'
-                }`}
+                className={`p-3 rounded-full transition-all duration-200 ${parsedPreview.length > 0
+                  ? 'bg-[#a855f7] text-white hover:bg-[#b975f9] shadow-lg shadow-[#a855f7]/30 hover:scale-110'
+                  : 'bg-[#2a2a32] text-[#6b6b75] cursor-not-allowed'
+                  }`}
                 title="Apply rules to ALL weeks permanently"
               >
                 <LockIcon className="w-5 h-5" />
@@ -523,11 +559,10 @@ Examples:
             {saveAsDefaultTemplate && (
               <button
                 onClick={saveAsDefaultTemplate}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
-                  showSavedDefaultMessage
-                    ? 'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
-                    : 'bg-[#a855f7]/10 text-[#a855f7] border border-[#a855f7]/30 hover:bg-[#a855f7]/20 hover:border-[#a855f7]/50'
-                }`}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 ${showSavedDefaultMessage
+                  ? 'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
+                  : 'bg-[#a855f7]/10 text-[#a855f7] border border-[#a855f7]/30 hover:bg-[#a855f7]/20 hover:border-[#a855f7]/50'
+                  }`}
                 title="Save current staffing setup as the default for new weeks"
               >
                 {showSavedDefaultMessage ? (
@@ -586,26 +621,25 @@ Examples:
                   {slots.map((slot, index) => (
                     <div key={slot.id} className="flex items-center gap-2 p-2 bg-[#0d0d0f] rounded-lg border border-[#2a2a32]">
                       <span className="text-xs font-medium text-[#6b6b75] w-5">{index + 1}.</span>
-
-                      <input
+                      <DebouncedInput
                         type="text"
                         value={slot.label || ''}
-                        onChange={(e) => updateSlot(key, slot.id, 'label', e.target.value)}
+                        onChange={(val) => updateSlot(key, slot.id, 'label', val)}
                         placeholder="Label"
                         className="flex-1 px-2 py-1 text-sm bg-[#141417] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825] placeholder:text-[#6b6b75]"
                       />
 
-                      <input
+                      <DebouncedInput
                         type="time"
                         value={slot.startTime}
-                        onChange={(e) => updateSlot(key, slot.id, 'startTime', e.target.value)}
+                        onChange={(val) => updateSlot(key, slot.id, 'startTime', val)}
                         className="px-2 py-1 text-sm bg-[#141417] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
                       />
                       <span className="text-[#6b6b75] text-xs">to</span>
-                      <input
+                      <DebouncedInput
                         type="time"
                         value={slot.endTime}
-                        onChange={(e) => updateSlot(key, slot.id, 'endTime', e.target.value)}
+                        onChange={(val) => updateSlot(key, slot.id, 'endTime', val)}
                         className="px-2 py-1 text-sm bg-[#141417] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
                       />
 

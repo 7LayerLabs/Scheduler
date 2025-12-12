@@ -36,6 +36,7 @@ interface Props {
   setPermanentRules?: (rules: ScheduleOverride[]) => void;
   permanentRulesDisplay?: string[];
   setPermanentRulesDisplay?: (display: string[]) => void;
+  onArchiveSchedule?: () => void;
 }
 
 export default function ScheduleView({
@@ -62,6 +63,7 @@ export default function ScheduleView({
   setPermanentRules,
   permanentRulesDisplay,
   setPermanentRulesDisplay,
+  onArchiveSchedule,
 }: Props) {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
@@ -443,6 +445,17 @@ export default function ScheduleView({
             </button>
           )}
 
+          {schedule && onArchiveSchedule && (
+            <button
+              onClick={onArchiveSchedule}
+              className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-[#a855f7]/10 hover:bg-[#a855f7]/20 text-[#a855f7] text-xs sm:text-sm font-semibold rounded-xl transition-all duration-200 border border-[#a855f7]/30 hover:border-[#a855f7]/50"
+            >
+              <ArchiveBoxIcon className="w-4 h-4" />
+              <span className="hidden sm:inline">Archive</span>
+              <span className="sm:hidden">Save</span>
+            </button>
+          )}
+
           {/* Clear Confirmation Modal */}
           {showClearConfirm && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
@@ -564,12 +577,11 @@ export default function ScheduleView({
                 {parsedPreview.map((text, idx) => (
                   <span
                     key={idx}
-                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                      text.includes('CLOSED') ? 'bg-[#ef4444]/10 text-[#ef4444] border border-[#ef4444]/30' :
+                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${text.includes('CLOSED') ? 'bg-[#ef4444]/10 text-[#ef4444] border border-[#ef4444]/30' :
                       text.includes('Close at') ? 'bg-[#f59e0b]/10 text-[#f59e0b] border border-[#f59e0b]/30' :
-                      text.startsWith('✗') ? 'bg-[#ef4444]/10 text-[#ef4444] border border-[#ef4444]/30' :
-                      'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
-                    }`}
+                        text.startsWith('✗') ? 'bg-[#ef4444]/10 text-[#ef4444] border border-[#ef4444]/30' :
+                          'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
+                      }`}
                   >
                     {text}
                   </span>
@@ -585,11 +597,10 @@ export default function ScheduleView({
               <button
                 onClick={handleApplyWeekRules}
                 disabled={parsedPreview.length === 0}
-                className={`p-2.5 rounded-full transition-all duration-200 ${
-                  parsedPreview.length > 0
-                    ? 'bg-[#e5a825] text-[#0d0d0f] hover:bg-[#f5b835] shadow-lg shadow-[#e5a825]/30 hover:scale-110'
-                    : 'bg-[#2a2a32] text-[#6b6b75] cursor-not-allowed'
-                }`}
+                className={`p-2.5 rounded-full transition-all duration-200 ${parsedPreview.length > 0
+                  ? 'bg-[#e5a825] text-[#0d0d0f] hover:bg-[#f5b835] shadow-lg shadow-[#e5a825]/30 hover:scale-110'
+                  : 'bg-[#2a2a32] text-[#6b6b75] cursor-not-allowed'
+                  }`}
                 title="Apply to this week only"
               >
                 <ArrowRightIcon className="w-4 h-4" />
@@ -601,11 +612,10 @@ export default function ScheduleView({
               <button
                 onClick={handleApplyPermanentRules}
                 disabled={parsedPreview.length === 0}
-                className={`p-2.5 rounded-full transition-all duration-200 ${
-                  parsedPreview.length > 0
-                    ? 'bg-[#a855f7] text-white hover:bg-[#b975f9] shadow-lg shadow-[#a855f7]/30 hover:scale-110'
-                    : 'bg-[#2a2a32] text-[#6b6b75] cursor-not-allowed'
-                }`}
+                className={`p-2.5 rounded-full transition-all duration-200 ${parsedPreview.length > 0
+                  ? 'bg-[#a855f7] text-white hover:bg-[#b975f9] shadow-lg shadow-[#a855f7]/30 hover:scale-110'
+                  : 'bg-[#2a2a32] text-[#6b6b75] cursor-not-allowed'
+                  }`}
                 title="Save permanently (all weeks, persists after refresh)"
               >
                 <LockClosedIcon className="w-4 h-4" />
@@ -1142,6 +1152,33 @@ function ScheduleGrid({
                               >
                                 {locked ? 'L' : 'U'}
                               </button>
+
+                              {/* Delete Button */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (onUpdateSchedule) {
+                                    const newAssignments = schedule.assignments.filter((_, idx) => {
+                                      const assignmentDate = getDateStringForDay(dayFull);
+                                      const currentAssignment = schedule.assignments[idx];
+                                      // Find the matching assignment to remove
+                                      return !(
+                                        currentAssignment.employeeId === emp.id &&
+                                        currentAssignment.date === assignmentDate &&
+                                        currentAssignment.shiftId === a.shiftId
+                                      );
+                                    });
+                                    onUpdateSchedule({
+                                      ...schedule,
+                                      assignments: newAssignments
+                                    });
+                                  }
+                                }}
+                                className="absolute -top-1 -left-1 w-5 h-5 rounded-full flex items-center justify-center text-xs transition-all bg-[#ef4444] text-white opacity-0 group-hover:opacity-100 hover:bg-[#dc2626] shadow-md"
+                                title="Delete shift"
+                              >
+                                <XIcon className="w-3 h-3" />
+                              </button>
                             </div>
                           );
                         })}
@@ -1309,6 +1346,14 @@ function XIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  );
+}
+
+function ArchiveBoxIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0l-3-3m3 3l3-3M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
     </svg>
   );
 }

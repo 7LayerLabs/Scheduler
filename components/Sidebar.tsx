@@ -61,6 +61,14 @@ function CloseIcon({ className }: { className?: string }) {
   );
 }
 
+function ArchiveBoxIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0l-3-3m3 3l3-3M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+    </svg>
+  );
+}
+
 export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager', logoUrl, isOpen = true, onClose }: SidebarProps) {
   // Base nav items for all users
   const baseNavItems = [
@@ -74,8 +82,13 @@ export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager',
   ];
 
   // Combine based on role
+  // Manager gets base items + History + Settings
   const navItems = userRole === 'manager'
-    ? [...baseNavItems, ...managerNavItems]
+    ? [
+      ...baseNavItems,
+      { id: 'history', label: 'History', icon: ArchiveBoxIcon },
+      ...managerNavItems
+    ]
     : baseNavItems;
 
   // Close sidebar on escape key
@@ -166,11 +179,10 @@ export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager',
                 <li key={item.id}>
                   <button
                     onClick={() => handleNavClick(item.id)}
-                    className={`w-full flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
-                      isActive
-                        ? 'bg-[#e5a825] text-[#0d0d0f] shadow-lg shadow-[#e5a825]/20'
-                        : 'text-[#a0a0a8] hover:bg-[#1a1a1f] hover:text-white'
-                    }`}
+                    className={`w-full flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl text-sm font-medium transition-all duration-200 ${isActive
+                      ? 'bg-[#e5a825] text-[#0d0d0f] shadow-lg shadow-[#e5a825]/20'
+                      : 'text-[#a0a0a8] hover:bg-[#1a1a1f] hover:text-white'
+                      }`}
                   >
                     <Icon className={`w-5 h-5 ${isActive ? 'text-[#0d0d0f]' : 'text-[#6b6b75]'}`} />
                     {item.label}

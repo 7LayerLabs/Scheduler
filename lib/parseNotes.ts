@@ -76,7 +76,7 @@ function parseBusinessRule(sentence: string): ScheduleOverride[] | null {
   // "closing at 2pm", "close at 2", "closed at 2pm", "at 2pm"
   // Pattern: looks for "at X" or "at Xpm" or "X pm" near the date
   const timeMatch = lowerSentence.match(/at\s+(\d{1,2}):?(\d{2})?\s*(am|pm)?/i) ||
-                    lowerSentence.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)/i);
+    lowerSentence.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)/i);
 
   if (timeMatch) {
     let hour = parseInt(timeMatch[1]);
@@ -187,8 +187,21 @@ function parseSentence(sentence: string, employees: Employee[]): ScheduleOverrid
   if (!employee) return null;
 
   // Find days mentioned
-  const days = findDays(sentence);
-  if (days.length === 0) return null;
+  // Find days mentioned
+  let days = findDays(sentence);
+
+  // If no days mentioned, but we have a valid action/employee, assume it applies to ALL scheduled days
+  // This handles global rules like "Kendall can't open" (implies every day)
+  if (days.length === 0) {
+    const action = determineAction(sentence);
+    // Only apply default if it looks like a rule (exclude or assign)
+    if (action === 'exclude' || action === 'assign') {
+      days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+      console.log('No days specified - defaulting to ALL days for rule:', sentence);
+    } else {
+      return null;
+    }
+  }
 
   // Check for custom times first (e.g., "10-1", "10:30-2:30", "10 to 1")
   const times = findTimes(sentence);
