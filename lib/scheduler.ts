@@ -706,11 +706,24 @@ export function generateSchedule(
 
     // Get shifts for this day based on staffing needs (new slots format)
     const shifts: Shift[] = [];
+
+    // Count how many fixed shift assignments were already made for this day
+    // Fixed shifts should count toward the daily staffing limit
+    const fixedShiftAssignmentsForDay = assignments.filter(a =>
+      a.date === dateStr && a.shiftId.includes('-fixed-')
+    ).length;
+
     if (staffingNeeds) {
       const needs = staffingNeeds[day as keyof WeeklyStaffingNeeds];
       if (needs && needs.slots && needs.slots.length > 0) {
-        // Use the new slots array
-        for (const slot of needs.slots) {
+        // Use the new slots array, but reduce by fixed shift count
+        const slotsToCreate = Math.max(0, needs.slots.length - fixedShiftAssignmentsForDay);
+        console.log(`${day}: ${needs.slots.length} slots configured, ${fixedShiftAssignmentsForDay} fixed shifts already assigned, creating ${slotsToCreate} regular slots`);
+
+        // Take only the first N slots we still need to fill
+        const slotsToUse = needs.slots.slice(0, slotsToCreate);
+
+        for (const slot of slotsToUse) {
           let slotEndTime = slot.endTime;
           const slotStartTime = slot.startTime;
 
@@ -750,7 +763,11 @@ export function generateSchedule(
         }
       } else if (needs && (needs.morning || needs.night)) {
         // Fallback to legacy format for backward compatibility
-        if (needs.morning && needs.morning > 0) {
+        // Reduce requiredStaff by fixed shift count
+        const adjustedMorning = Math.max(0, (needs.morning || 0) - fixedShiftAssignmentsForDay);
+        const adjustedNight = Math.max(0, (needs.night || 0) - Math.max(0, fixedShiftAssignmentsForDay - (needs.morning || 0)));
+
+        if (adjustedMorning > 0) {
           shifts.push({
             id: `${day}-morning`,
             day,
@@ -758,12 +775,12 @@ export function generateSchedule(
             startTime: needs.morningStart || '07:15',
             endTime: needs.morningEnd || '14:00',
             duration: getShiftDuration(needs.morningStart || '07:15', needs.morningEnd || '14:00'),
-            requiredStaff: needs.morning,
+            requiredStaff: adjustedMorning,
             name: 'Morning Shift',
             requiresBartender: false,
           });
         }
-        if (needs.night && needs.night > 0) {
+        if (adjustedNight > 0) {
           shifts.push({
             id: `${day}-night`,
             day,
@@ -771,7 +788,7 @@ export function generateSchedule(
             startTime: needs.nightStart || '16:00',
             endTime: needs.nightEnd || '21:00',
             duration: getShiftDuration(needs.nightStart || '16:00', needs.nightEnd || '21:00'),
-            requiredStaff: needs.night,
+            requiredStaff: adjustedNight,
             name: 'Night Shift',
             requiresBartender: true,
           });
