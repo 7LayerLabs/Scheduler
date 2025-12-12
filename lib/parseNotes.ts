@@ -18,12 +18,17 @@ export function parseScheduleNotes(notes: string, employeeList?: Employee[]): Sc
   for (const sentence of sentences) {
     console.log('Processing sentence:', sentence);
 
-    // First try to parse as a business-wide rule (CLOSED, closing early, etc.)
-    const businessRule = parseBusinessRule(sentence);
-    console.log('Business rule result:', businessRule);
-    if (businessRule) {
-      overrides.push(...businessRule);
-      continue;
+    // If the sentence references a specific employee, treat it as an employee rule first.
+    // This avoids mis-parsing phrases like "Kim closes Saturday" as a business closure.
+    const employeeMentioned = findEmployee(sentence, employees);
+    if (!employeeMentioned) {
+      // First try to parse as a business-wide rule (CLOSED, closing early, etc.)
+      const businessRule = parseBusinessRule(sentence);
+      console.log('Business rule result:', businessRule);
+      if (businessRule) {
+        overrides.push(...businessRule);
+        continue;
+      }
     }
 
     // Then try employee-specific rules
@@ -43,12 +48,15 @@ export function parseScheduleNotes(notes: string, employeeList?: Employee[]): Sc
 function parseBusinessRule(sentence: string): ScheduleOverride[] | null {
   const lowerSentence = sentence.toLowerCase();
 
-  // Find if there's a specific date mentioned
+  const overrides: ScheduleOverride[] = [];
+
+  // Determine target days:
+  // - Prefer explicit date parsing (e.g., "Dec 24")
+  // - Fall back to day-of-week phrases (e.g., "Closed Thursday", "Thursday close at 2")
   const dateInfo = findSpecificDate(sentence);
   console.log('findSpecificDate for:', sentence, '=> result:', dateInfo);
-  if (!dateInfo) return null;
-
-  const overrides: ScheduleOverride[] = [];
+  const days: DayOfWeek[] = dateInfo ? [dateInfo.day] : findDays(sentence);
+  if (days.length === 0) return null;
 
   // Check for fully CLOSED day (various patterns)
   // "closed all day", "closed thursday", "closed all day thursday", etc.
@@ -60,15 +68,16 @@ function parseBusinessRule(sentence: string): ScheduleOverride[] | null {
     (lowerSentence.includes('closed') && !lowerSentence.match(/at\s+\d|closing at|\d\s*(am|pm)/i));
 
   if (isFullyClosed) {
-    // Create exclude overrides for ALL employees on this day
-    overrides.push({
-      id: `business-closed-${dateInfo.day}-${Date.now()}`,
-      type: 'exclude',
-      employeeId: '__ALL__', // Special marker for "all employees"
-      day: dateInfo.day,
-      shiftType: 'any',
-      note: `CLOSED: ${sentence}`,
-    });
+    for (const day of days) {
+      overrides.push({
+        id: `business-closed-${day}-${Date.now()}`,
+        type: 'exclude',
+        employeeId: '__ALL__', // Special marker for "all employees"
+        day,
+        shiftType: 'any',
+        note: `CLOSED: ${sentence}`,
+      });
+    }
     return overrides;
   }
 
@@ -91,16 +100,18 @@ function parseBusinessRule(sentence: string): ScheduleOverride[] | null {
 
     const closeTime = `${hour.toString().padStart(2, '0')}:${minutes}`;
 
-    // Create a special override that sets the closing time for this day
-    overrides.push({
-      id: `business-early-close-${dateInfo.day}-${Date.now()}`,
-      type: 'custom_time',
-      employeeId: '__CLOSE_EARLY__', // Special marker
-      day: dateInfo.day,
-      shiftType: 'any',
-      customEndTime: closeTime,
-      note: `Early close at ${closeTime}: ${sentence}`,
-    });
+    // Create a special override that sets the closing time for these day(s)
+    for (const day of days) {
+      overrides.push({
+        id: `business-early-close-${day}-${Date.now()}`,
+        type: 'custom_time',
+        employeeId: '__CLOSE_EARLY__', // Special marker
+        day,
+        shiftType: 'any',
+        customEndTime: closeTime,
+        note: `Early close at ${closeTime}: ${sentence}`,
+      });
+    }
     return overrides;
   }
 

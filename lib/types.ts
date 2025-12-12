@@ -3,8 +3,14 @@
 export interface Employee {
   id: string;
   name: string;
+  // Optional contact number for SMS notifications.
+  // Recommended format: E.164 (example: +15551234567)
+  phoneNumber?: string;
   bartendingScale: number; // 0-5
   aloneScale: number; // 0-5
+  // Optional role tags that can influence assignment priorities.
+  // Example: ["bar"] will prioritize the employee for Bar-labeled slots and count them as bartender coverage.
+  roleTags?: string[];
   availability: Availability;
   setSchedule?: {
     day: DayOfWeek;
@@ -66,7 +72,9 @@ export interface DayAvailability {
 }
 
 export interface AvailableShift {
-  type: 'morning' | 'mid' | 'night' | 'any' | 'custom';
+  // "bar" is a special availability bucket used to represent a Bar-labeled night shift starting at 4:00pm.
+  // The scheduler treats this as night availability, but only for Bar-labeled slots.
+  type: 'morning' | 'mid' | 'night' | 'bar' | 'any' | 'custom';
   startTime?: string; // HH:MM format
   endTime?: string;
   flexible?: boolean; // Can give up this shift if needed
@@ -99,6 +107,9 @@ export interface Shift {
   requiredStaff: number;
   name?: string;
   requiresBartender?: boolean;
+  // True if this shift contains any time segment where staffing template has only 1 person on the floor.
+  // Used to ensure low solo-skill employees are not scheduled for solo coverage.
+  requiresSolo?: boolean;
 }
 
 export type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -181,6 +192,26 @@ export interface WeeklyStaffingNeeds {
   friday: DayStaffing;
   saturday: DayStaffing;
   sunday: DayStaffing;
+}
+
+export interface BusinessHours {
+  open: string;   // "07:15"
+  close: string;  // "21:00"
+  closed: boolean;
+}
+
+export type BusinessHoursByDay = Record<DayOfWeek, BusinessHours>;
+
+export interface SchedulerOptions {
+  // Optional business hours used to clamp staffing slots and auto-close days
+  businessHours?: BusinessHoursByDay;
+
+  // Thresholds and rules (defaults match Settings defaults if not supplied)
+  overtimeThresholdHours?: number;
+  minRestBetweenShiftsHours?: number;
+  bartendingThreshold?: number;
+  aloneThreshold?: number;
+  minShiftHours?: number;
 }
 
 export interface StaffingSlot {

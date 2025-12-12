@@ -53,8 +53,10 @@ export interface SavedSchedule {
 export interface DBEmployee {
   id: string;
   name: string;
+  phoneNumber?: string;
   bartendingScale: number;
   aloneScale: number;
+  roleTags?: string; // JSON stringified string[]
   availability: string; // JSON stringified
   setSchedule?: string; // JSON stringified
   exclusions: string; // JSON stringified
@@ -282,8 +284,10 @@ import { Employee, ScheduleOverride, WeeklyStaffingNeeds } from './types';
 function employeeToDBEmployee(emp: Employee): Omit<DBEmployee, 'id' | 'createdAt' | 'updatedAt'> {
   return {
     name: emp.name,
+    phoneNumber: emp.phoneNumber,
     bartendingScale: emp.bartendingScale,
     aloneScale: emp.aloneScale,
+    roleTags: emp.roleTags ? JSON.stringify(emp.roleTags) : undefined,
     availability: JSON.stringify(emp.availability),
     setSchedule: emp.setSchedule ? JSON.stringify(emp.setSchedule) : undefined,
     exclusions: JSON.stringify(emp.exclusions),
@@ -300,8 +304,10 @@ function dbEmployeeToEmployee(dbEmp: DBEmployee): Employee {
   return {
     id: dbEmp.id,
     name: dbEmp.name,
+    phoneNumber: dbEmp.phoneNumber,
     bartendingScale: dbEmp.bartendingScale,
     aloneScale: dbEmp.aloneScale,
+    roleTags: dbEmp.roleTags ? JSON.parse(dbEmp.roleTags) : undefined,
     availability: JSON.parse(dbEmp.availability),
     setSchedule: dbEmp.setSchedule ? JSON.parse(dbEmp.setSchedule) : undefined,
     exclusions: JSON.parse(dbEmp.exclusions),

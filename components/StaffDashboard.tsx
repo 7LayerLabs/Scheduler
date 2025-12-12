@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { User, TimeOffRequest, ShiftSwapRequest, useTimeOffRequests, useShiftSwapRequests, createTimeOffRequest, createShiftSwapRequest } from '@/lib/instantdb';
 import { Employee, WeeklySchedule } from '@/lib/types';
+import { getMorningOrNightFromStartTime } from '@/lib/shiftBuckets';
 
 interface Props {
   user: User;
@@ -114,7 +115,7 @@ export default function StaffDashboard({
                     onClick={() => {
                       setSelectedShift({
                         date: shift.date,
-                        shiftType: shift.shiftId.includes('night') ? 'night' : 'morning',
+                        shiftType: getMorningOrNightFromStartTime(shift.startTime),
                       });
                       setShowSwapModal(true);
                     }}

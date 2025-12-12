@@ -18,21 +18,22 @@ export default function ScheduleNotes({
   setNotes,
   overrides,
   setOverrides,
+  employees,
 }: Props) {
   // Derive parsed preview from notes using useMemo (no setState in effects)
   const parsedPreview = useMemo(() => {
     if (notes.trim()) {
-      const parsed = parseScheduleNotes(notes);
-      return formatParsedOverrides(parsed);
+      const parsed = parseScheduleNotes(notes, employees);
+      return formatParsedOverrides(parsed, employees);
     }
     return [];
-  }, [notes]);
+  }, [notes, employees]);
 
   // Handle notes change - update both notes and overrides together
   const handleNotesChange = (newNotes: string) => {
     setNotes(newNotes);
     if (newNotes.trim()) {
-      const parsed = parseScheduleNotes(newNotes);
+      const parsed = parseScheduleNotes(newNotes, employees);
       setOverrides(parsed);
     } else {
       setOverrides([]);

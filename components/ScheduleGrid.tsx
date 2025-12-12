@@ -1,6 +1,7 @@
 'use client';
 
 import { WeeklySchedule, Employee, DayOfWeek } from '@/lib/types';
+import { getMorningOrNightFromStartTime } from '@/lib/shiftBuckets';
 
 interface Props {
   schedule: WeeklySchedule;
@@ -39,8 +40,8 @@ export default function ScheduleGrid({ schedule, weekStart, employees }: Props) 
     return schedule.assignments
       .filter(a => {
         const matchesDay = a.shiftId.startsWith(dayPrefix) || a.shiftId.includes(`-${dayPrefix}-`);
-        const matchesType = a.shiftId.includes(type) ||
-          (type === 'morning' && !a.shiftId.includes('night') && !a.shiftId.includes('mid'));
+        const assignmentType = getMorningOrNightFromStartTime(a.startTime);
+        const matchesType = assignmentType === type;
         return matchesDay && matchesType;
       })
       .map(a => a.employeeId)

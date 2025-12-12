@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Employee, Availability, DayAvailability, EmployeeRestriction, PermanentRule, DayOfWeek } from '@/lib/types';
+import EmployeeRoleToggle from '@/components/EmployeeRoleToggle';
 
 interface Props {
   employees: Employee[];
@@ -26,15 +27,17 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
 
   // Edit form state
   const [editName, setEditName] = useState('');
+  const [editPhoneNumber, setEditPhoneNumber] = useState('');
   const [editBartending, setEditBartending] = useState(0);
   const [editAlone, setEditAlone] = useState(0);
   const [editMinShifts, setEditMinShifts] = useState<number | undefined>(undefined);
   const [editAvailability, setEditAvailability] = useState<Availability | null>(null);
   const [editRestrictions, setEditRestrictions] = useState<EmployeeRestriction[]>([]);
   const [editPermanentRules, setEditPermanentRules] = useState<PermanentRule[]>([]);
+  const [editRoleTags, setEditRoleTags] = useState<string[]>([]);
 
   type DayKey = 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
-  type ShiftType = 'morning' | 'mid' | 'night' | 'any' | 'none';
+  type ShiftType = 'morning' | 'mid' | 'night' | 'bar' | 'any' | 'none';
 
   const dayLabels: { key: DayKey; label: string }[] = [
     { key: 'tuesday', label: 'Tue' },
@@ -95,6 +98,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
   const startEditing = () => {
     if (selectedEmployee) {
       setEditName(selectedEmployee.name);
+      setEditPhoneNumber(selectedEmployee.phoneNumber || '');
       setEditBartending(selectedEmployee.bartendingScale);
       setEditAlone(selectedEmployee.aloneScale);
       setEditMinShifts(selectedEmployee.minShiftsPerWeek);
@@ -104,6 +108,7 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
       setEditRestrictions(JSON.parse(JSON.stringify(selectedEmployee.restrictions || [])));
       // Deep clone permanent rules
       setEditPermanentRules(JSON.parse(JSON.stringify(selectedEmployee.permanentRules || [])));
+      setEditRoleTags(JSON.parse(JSON.stringify(selectedEmployee.roleTags || [])));
       setIsEditing(true);
     }
   };
@@ -142,7 +147,15 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
       } else {
         // Selecting a specific type removes 'any' first
         const withoutAny = currentShifts.filter(s => s.type !== 'any');
-        newShifts = [...withoutAny, { type: shiftType as 'morning' | 'mid' | 'night' }];
+        if (shiftType === 'bar') {
+          // Bar Shift and Dinner (night) are mutually exclusive
+          const withoutNight = withoutAny.filter(s => s.type !== 'night');
+          newShifts = [...withoutNight, { type: 'bar' as const, startTime: '16:00' }];
+        } else {
+          // Dinner (night) and Bar Shift are mutually exclusive
+          const withoutBar = shiftType === 'night' ? withoutAny.filter(s => s.type !== 'bar') : withoutAny;
+          newShifts = [...withoutBar, { type: shiftType as 'morning' | 'mid' | 'night' }];
+        }
       }
     }
 
@@ -160,9 +173,11 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
       const updatedEmployee: Employee = {
         ...selectedEmployee,
         name: editName,
+        phoneNumber: editPhoneNumber.trim() ? editPhoneNumber.trim() : undefined,
         bartendingScale: editBartending,
         aloneScale: editAlone,
         minShiftsPerWeek: editMinShifts,
+        roleTags: editRoleTags,
         availability: editAvailability,
         restrictions: editRestrictions,
         permanentRules: editPermanentRules,
@@ -555,6 +570,30 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                 )}
               </div>
 
+              {/* Contact */}
+              <div className="mb-6">
+                <h4 className="text-sm font-medium text-white mb-2">Contact</h4>
+                <div className="flex items-center justify-between gap-3 bg-[#141417] border border-[#2a2a32] rounded-lg px-3 py-2">
+                  <span className="text-sm text-[#a0a0a8]">Phone</span>
+                  {isEditing ? (
+                    <input
+                      type="tel"
+                      value={editPhoneNumber}
+                      onChange={(e) => setEditPhoneNumber(e.target.value)}
+                      placeholder="Example: +15551234567"
+                      className="w-52 max-w-full text-right bg-[#0d0d0f] border border-[#2a2a32] rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 placeholder:text-[#6b6b75]"
+                    />
+                  ) : (
+                    <span className={`text-sm font-medium ${selectedEmployee.phoneNumber ? 'text-white' : 'text-[#6b6b75]'}`}>
+                      {selectedEmployee.phoneNumber || 'Not set'}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-[#6b6b75] mt-2">
+                  This is used for texting schedules and notifications.
+                </p>
+              </div>
+
               {/* Skills */}
               <div className="space-y-4 mb-6">
                 <div>
@@ -589,6 +628,23 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Roles */}
+              <div className="mb-6">
+                <h4 className="text-sm font-medium text-white mb-3">Roles</h4>
+                <EmployeeRoleToggle
+                  label="Bar"
+                  description="Prioritized for Bar-labeled slots and counts as bartender coverage"
+                  disabled={!isEditing}
+                  checked={(isEditing ? editRoleTags : (selectedEmployee.roleTags || [])).includes('bar')}
+                  onChange={(checked) => {
+                    const current = new Set((isEditing ? editRoleTags : (selectedEmployee.roleTags || [])).map(t => t.toLowerCase()));
+                    if (checked) current.add('bar');
+                    else current.delete('bar');
+                    setEditRoleTags(Array.from(current));
+                  }}
+                />
               </div>
 
               {/* Min Shifts */}
@@ -650,11 +706,14 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                       const shifts = dayAvail?.shifts || [];
                       const isSunday = key === 'sunday';
 
-                      const shiftOptions: { label: string; type: 'any' | 'morning' | 'mid' | 'night' }[] = [
+                      const shiftOptions: { label: string; type: 'any' | 'morning' | 'mid' | 'night' | 'bar' }[] = [
                         { label: 'Open', type: 'any' },
                         { label: 'Morning', type: 'morning' },
                         { label: 'Mid', type: 'mid' },
-                        ...(isSunday ? [] : [{ label: 'Dinner', type: 'night' as const }])
+                        ...(isSunday ? [] : [
+                          { label: 'Dinner', type: 'night' as const },
+                          { label: 'Bar Shift', type: 'bar' as const },
+                        ])
                       ];
 
                       return (
@@ -720,11 +779,14 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                     {dayLabels.map(({ key, label }) => {
                       const isSunday = key === 'sunday';
 
-                      const shiftOptions: { label: string; type: 'any' | 'morning' | 'mid' | 'night' }[] = [
+                      const shiftOptions: { label: string; type: 'any' | 'morning' | 'mid' | 'night' | 'bar' }[] = [
                         { label: 'Open', type: 'any' },
                         { label: 'Morning', type: 'morning' },
                         { label: 'Mid', type: 'mid' },
-                        ...(isSunday ? [] : [{ label: 'Dinner', type: 'night' as const }])
+                        ...(isSunday ? [] : [
+                          { label: 'Dinner', type: 'night' as const },
+                          { label: 'Bar Shift', type: 'bar' as const },
+                        ])
                       ];
 
                       return (
@@ -1106,6 +1168,29 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
 
             {/* Mobile Modal Content */}
             <div className="p-4 space-y-4">
+              {/* Contact */}
+              <div className="bg-[#141417] border border-[#2a2a32] rounded-xl p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-[#a0a0a8]">Phone</span>
+                  {isEditing ? (
+                    <input
+                      type="tel"
+                      value={editPhoneNumber}
+                      onChange={(e) => setEditPhoneNumber(e.target.value)}
+                      placeholder="Example: +15551234567"
+                      className="w-52 max-w-full text-right bg-[#0d0d0f] border border-[#2a2a32] rounded px-2 py-1 text-sm text-white placeholder:text-[#6b6b75]"
+                    />
+                  ) : (
+                    <span className={`text-sm font-medium ${selectedEmployee.phoneNumber ? 'text-white' : 'text-[#6b6b75]'}`}>
+                      {selectedEmployee.phoneNumber || 'Not set'}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-[#6b6b75] mt-2">
+                  Used for texting schedules.
+                </p>
+              </div>
+
               {/* Skills */}
               <div className="space-y-3">
                 <div>
@@ -1170,11 +1255,14 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                       const shifts = dayAvail?.shifts || [];
                       const isSunday = key === 'sunday';
 
-                      const shiftOptions: { label: string; type: 'any' | 'morning' | 'mid' | 'night' }[] = [
+                      const shiftOptions: { label: string; type: 'any' | 'morning' | 'mid' | 'night' | 'bar' }[] = [
                         { label: 'Open', type: 'any' },
                         { label: 'AM', type: 'morning' },
                         { label: 'Mid', type: 'mid' },
-                        ...(isSunday ? [] : [{ label: 'PM', type: 'night' as const }])
+                        ...(isSunday ? [] : [
+                          { label: 'PM', type: 'night' as const },
+                          { label: 'Bar', type: 'bar' as const },
+                        ])
                       ];
 
                       return (
@@ -1279,9 +1367,11 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
 // Add Employee Modal Component
 function AddEmployeeModal({ onAdd, onClose }: { onAdd: (emp: Employee) => void; onClose: () => void }) {
   const [name, setName] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [bartending, setBartending] = useState(0);
   const [alone, setAlone] = useState(0);
   const [minShifts, setMinShifts] = useState<number | undefined>(undefined);
+  const [isBarRole, setIsBarRole] = useState(false);
 
   const getSkillStars = (level: number, onChange: (val: number) => void) => {
     return Array.from({ length: 5 }, (_, i) => (
@@ -1315,8 +1405,10 @@ function AddEmployeeModal({ onAdd, onClose }: { onAdd: (emp: Employee) => void; 
     const newEmployee: Employee = {
       id: name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now(),
       name: name.trim(),
+      phoneNumber: phoneNumber.trim() ? phoneNumber.trim() : undefined,
       bartendingScale: bartending,
       aloneScale: alone,
+      roleTags: isBarRole ? ['bar'] : [],
       availability: createDefaultAvailability(),
       exclusions: [],
       preferences: {},
@@ -1341,6 +1433,20 @@ function AddEmployeeModal({ onAdd, onClose }: { onAdd: (emp: Employee) => void; 
               className="w-full px-3 py-2 bg-[#141417] border border-[#2a2a32] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 placeholder:text-[#6b6b75]"
               autoFocus
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[#a0a0a8] mb-1">Phone (optional)</label>
+            <input
+              type="tel"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              placeholder="Example: +15551234567"
+              className="w-full px-3 py-2 bg-[#141417] border border-[#2a2a32] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 placeholder:text-[#6b6b75]"
+            />
+            <p className="text-[11px] text-[#6b6b75] mt-1">
+              Used for texting schedules.
+            </p>
           </div>
 
           <div>
@@ -1369,6 +1475,15 @@ function AddEmployeeModal({ onAdd, onClose }: { onAdd: (emp: Employee) => void; 
               onChange={(e) => setMinShifts(e.target.value ? parseInt(e.target.value) : undefined)}
               placeholder="Optional"
               className="w-full px-3 py-2 bg-[#141417] border border-[#2a2a32] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 placeholder:text-[#6b6b75]"
+            />
+          </div>
+
+          <div className="pt-1">
+            <EmployeeRoleToggle
+              label="Bar"
+              description="Prioritized for Bar-labeled slots and counts as bartender coverage"
+              checked={isBarRole}
+              onChange={setIsBarRole}
             />
           </div>
 

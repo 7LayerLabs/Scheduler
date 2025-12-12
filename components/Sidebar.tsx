@@ -69,6 +69,14 @@ function ArchiveBoxIcon({ className }: { className?: string }) {
   );
 }
 
+function ChatIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.76c0 1.6.632 3.136 1.757 4.268.474.478.758 1.12.758 1.792v1.204a.75.75 0 00.987.716l2.066-.688a2.25 2.25 0 011.143-.04c.68.16 1.39.244 2.13.244h3.64c4.418 0 8-3.045 8-6.8 0-3.756-3.582-6.8-8-6.8h-3.64c-4.418 0-8 3.044-8 6.8z" />
+    </svg>
+  );
+}
+
 export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager', logoUrl, isOpen = true, onClose }: SidebarProps) {
   // Base nav items for all users
   const baseNavItems = [
@@ -86,6 +94,7 @@ export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager',
   const navItems = userRole === 'manager'
     ? [
       ...baseNavItems,
+      { id: 'discussion', label: 'Discussion', icon: ChatIcon },
       { id: 'history', label: 'History', icon: ArchiveBoxIcon },
       ...managerNavItems
     ]

@@ -3,6 +3,17 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { Employee, WeeklySchedule, LockedShift, DayOfWeek, ScheduleOverride, WeeklyStaffingNeeds } from '@/lib/types';
 import { parseScheduleNotes, formatParsedOverrides } from '@/lib/parseNotes';
+import { getMorningOrNightFromStartTime } from '@/lib/shiftBuckets';
+import DefaultShiftsSidebar from '@/components/DefaultShiftsSidebar';
+import { normalizeStaffingSlotLabel } from '@/lib/scheduling/labels';
+import {
+  SHIFT_TEMPLATE_MIME_TYPE,
+  employeeHasOverlappingAssignment,
+  mapShiftIdForDayMove,
+  parseShiftTemplateDragPayload,
+  pickShiftIdForManualAssignment,
+} from '@/lib/manualShifts';
+import { updateScheduleAssignmentTime } from '@/lib/scheduleEdits';
 
 interface Props {
   weekStart: Date;
@@ -10,7 +21,7 @@ interface Props {
   formatWeekRange: (start: Date) => string;
   schedule: WeeklySchedule | null;
   setSchedule: (schedule: WeeklySchedule | null) => void;
-  handleGenerate: () => void;
+  handleGenerate: (notesText?: string) => void;
   onClearSchedule: () => void;
   isGenerating: boolean;
   employees: Employee[];
@@ -37,6 +48,7 @@ interface Props {
   permanentRulesDisplay?: string[];
   setPermanentRulesDisplay?: (display: string[]) => void;
   onArchiveSchedule?: () => void;
+  onPublishSchedule?: () => void;
 }
 
 export default function ScheduleView({
@@ -64,12 +76,23 @@ export default function ScheduleView({
   permanentRulesDisplay,
   setPermanentRulesDisplay,
   onArchiveSchedule,
+  onPublishSchedule,
 }: Props) {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Local state for notes to handle clearing immediately
   const [localNotes, setLocalNotes] = useState(notes);
   const lastSyncedNotesRef = useRef(notes);
+
+  // Clear notes in both local state and DB without letting the sync effect
+  // immediately restore stale DB text back into the textarea.
+  const clearWeekNotesInput = () => {
+    // Treat the current DB value as the last synced value so the effect does not
+    // "sync back" the old text while the DB update is still in flight.
+    lastSyncedNotesRef.current = notes;
+    setLocalNotes('');
+    setNotes('');
+  };
 
   // Sync local notes when DB notes change (e.g., when switching weeks)
   // But only if we're not actively editing (local state matches what we last synced)
@@ -371,9 +394,7 @@ export default function ScheduleView({
       setWeekLockedRules(newRules);
       setWeekLockedRulesDisplay(newDisplay);
       // Clear input after applying
-      setLocalNotes('');
-      setNotes('');
-      lastSyncedNotesRef.current = '';
+      clearWeekNotesInput();
     }
   };
 
@@ -385,9 +406,7 @@ export default function ScheduleView({
       setPermanentRules(newRules);
       setPermanentRulesDisplay(newDisplay);
       // Clear input after applying
-      setLocalNotes('');
-      setNotes('');
-      lastSyncedNotesRef.current = '';
+      clearWeekNotesInput();
     }
   };
 
@@ -464,6 +483,18 @@ export default function ScheduleView({
             </button>
           )}
 
+          {schedule && onPublishSchedule && (
+            <button
+              onClick={onPublishSchedule}
+              className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-[#22c55e]/10 hover:bg-[#22c55e]/20 text-[#22c55e] text-xs sm:text-sm font-semibold rounded-xl transition-all duration-200 border border-[#22c55e]/30 hover:border-[#22c55e]/50"
+              title="Publish this schedule so employees can view it"
+            >
+              <SendIcon className="w-4 h-4" />
+              <span className="hidden sm:inline">Publish</span>
+              <span className="sm:hidden">Pub</span>
+            </button>
+          )}
+
           {/* Clear Confirmation Modal */}
           {showClearConfirm && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
@@ -498,7 +529,7 @@ export default function ScheduleView({
             </div>
           )}
           <button
-            onClick={handleGenerate}
+            onClick={() => handleGenerate(localNotes)}
             disabled={isGenerating}
             className="inline-flex items-center gap-1.5 sm:gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-[#e5a825] hover:bg-[#f0b429] disabled:bg-[#3a3a45] text-[#0d0d0f] disabled:text-[#6b6b75] text-xs sm:text-sm font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-[#e5a825]/20 hover:shadow-[#e5a825]/40 hover:scale-[1.02] active:scale-[0.98]"
           >
@@ -563,9 +594,7 @@ export default function ScheduleView({
               {localNotes.trim() && (
                 <button
                   onClick={() => {
-                    setLocalNotes('');
-                    setNotes('');
-                    lastSyncedNotesRef.current = '';
+                    clearWeekNotesInput();
                   }}
                   className="text-xs text-[#ef4444] hover:text-[#f87171] transition-colors"
                 >
@@ -579,6 +608,9 @@ export default function ScheduleView({
               placeholder="e.g., December 24 closing at 2pm, December 25 CLOSED, [Name] opens Saturday, [Name] off Tuesday..."
               className="w-full h-20 p-3 bg-[#141417] border border-[#2a2a32] rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825] resize-none transition-all duration-200 placeholder:text-[#6b6b75]"
             />
+            <p className="mt-2 text-[11px] text-[#6b6b75]">
+              Tip: Clicking &quot;This Week&quot; or &quot;Always&quot; saves rules in the lists on the right. Clearing this box does not remove saved rules.
+            </p>
             {/* Preview */}
             {parsedPreview.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
@@ -695,92 +727,44 @@ export default function ScheduleView({
         {/* Schedule Content */}
         <div className="p-6">
           {schedule ? (
-            <ScheduleGrid
-              schedule={schedule}
-              weekStart={weekStart}
-              lockedShifts={lockedShifts}
-              employees={employees}
-              staffingNeeds={staffingNeeds}
-              overrides={parseScheduleNotes(notes, employees)}
-              onToggleLock={(employeeId, day, shiftType) => {
-                const exists = lockedShifts.find(
-                  l => l.employeeId === employeeId && l.day === day && l.shiftType === shiftType
-                );
-                if (exists) {
-                  setLockedShifts(lockedShifts.filter(
-                    l => !(l.employeeId === employeeId && l.day === day && l.shiftType === shiftType)
-                  ));
-                } else {
-                  setLockedShifts([...lockedShifts, { employeeId, day, shiftType }]);
-                }
-              }}
-              onSwapAssignments={(sourceEmpId, sourceDay, sourceShift, targetEmpId, targetDay, targetShift) => {
-                // True swap: exchange the two employees between their slots
-                const dayPrefixes: Record<string, string> = {
-                  tuesday: 'tue', wednesday: 'wed', thursday: 'thu',
-                  friday: 'fri', saturday: 'sat', sunday: 'sun'
-                };
-                const sourcePrefix = dayPrefixes[sourceDay];
-                const targetPrefix = dayPrefixes[targetDay];
-
-                const matchesSlot = (shiftId: string, prefix: string, shiftType: string) => {
-                  const id = shiftId.toLowerCase();
-                  const matchesDay = id.includes(prefix + '-') || id.startsWith(prefix);
-                  let matchesShift = false;
-                  if (shiftType === 'morning') {
-                    matchesShift = (id.includes('early') || id.includes('morning')) && !id.includes('night');
-                  } else if (shiftType === 'night') {
-                    matchesShift = id.includes('night');
-                  } else {
-                    matchesShift = id.includes(shiftType);
-                  }
-                  return matchesDay && matchesShift;
-                };
-
-                // Find the source assignment (the one being dragged)
-                const sourceAssignmentIndex = schedule.assignments.findIndex(a =>
-                  a.employeeId === sourceEmpId && matchesSlot(a.shiftId, sourcePrefix, sourceShift)
-                );
-
-                // Find the target assignment (the one being dropped on)
-                const targetAssignmentIndex = schedule.assignments.findIndex(a =>
-                  a.employeeId === targetEmpId && matchesSlot(a.shiftId, targetPrefix, targetShift)
-                );
-
-                if (sourceAssignmentIndex === -1 || targetAssignmentIndex === -1) return;
-
-                // Create new assignments array with swapped employees
-                const newAssignments = [...schedule.assignments];
-
-                // Swap the shiftIds between the two assignments (keep employees, swap their slots)
-                const sourceShiftId = newAssignments[sourceAssignmentIndex].shiftId;
-                const sourceDate = newAssignments[sourceAssignmentIndex].date;
-                const targetShiftId = newAssignments[targetAssignmentIndex].shiftId;
-                const targetDate = newAssignments[targetAssignmentIndex].date;
-
-                // Source employee gets target's shift
-                newAssignments[sourceAssignmentIndex] = {
-                  ...newAssignments[sourceAssignmentIndex],
-                  shiftId: targetShiftId,
-                  date: targetDate
-                };
-
-                // Target employee gets source's shift
-                newAssignments[targetAssignmentIndex] = {
-                  ...newAssignments[targetAssignmentIndex],
-                  shiftId: sourceShiftId,
-                  date: sourceDate
-                };
-
-                setSchedule({
-                  ...schedule,
-                  assignments: newAssignments
-                });
-              }}
-              onUpdateSchedule={setSchedule}
-            />
+            <div className="flex flex-col lg:flex-row gap-4">
+              <DefaultShiftsSidebar staffingNeeds={staffingNeeds} />
+              <div className="flex-1 min-w-0">
+                <ScheduleGrid
+                  schedule={schedule}
+                  weekStart={weekStart}
+                  lockedShifts={lockedShifts}
+                  employees={employees}
+                  staffingNeeds={staffingNeeds}
+                      overrides={parseScheduleNotes(localNotes, employees)}
+                  onToggleLock={(employeeId, day, shiftType) => {
+                    const exists = lockedShifts.find(
+                      l => l.employeeId === employeeId && l.day === day && l.shiftType === shiftType
+                    );
+                    if (exists) {
+                      setLockedShifts(lockedShifts.filter(
+                        l => !(l.employeeId === employeeId && l.day === day && l.shiftType === shiftType)
+                      ));
+                    } else {
+                      setLockedShifts([...lockedShifts, { employeeId, day, shiftType }]);
+                    }
+                  }}
+                  onSwapAssignments={(sourceEmpId, sourceDay, sourceShift, targetEmpId, targetDay, targetShift) => {
+                    // Deprecated: schedule grid handles drag and drop directly.
+                    // Intentionally left as a no-op to keep backwards compatibility with the prop signature.
+                    void sourceEmpId;
+                    void sourceDay;
+                    void sourceShift;
+                    void targetEmpId;
+                    void targetDay;
+                    void targetShift;
+                  }}
+                  onUpdateSchedule={setSchedule}
+                />
+              </div>
+            </div>
           ) : (
-            <EmptyState onGenerate={handleGenerate} />
+            <EmptyState onGenerate={() => handleGenerate(localNotes)} />
           )}
         </div>
       </div>
@@ -908,6 +892,7 @@ function ScheduleGrid({
   lockedShifts,
   onToggleLock,
   employees,
+  staffingNeeds,
   onUpdateSchedule,
 }: {
   schedule: WeeklySchedule;
@@ -928,11 +913,24 @@ function ScheduleGrid({
     day: DayOfWeek;
     shiftType: 'morning' | 'night';
     assignmentIndex: number;
+    shiftId: string;
+    startTime?: string;
+    endTime?: string;
   } | null>(null);
   const [dropTarget, setDropTarget] = useState<{
     employeeId: string;
     day: DayOfWeek;
   } | null>(null);
+
+  const [editingShiftKey, setEditingShiftKey] = useState<{
+    employeeId: string;
+    date: string;
+    day: DayOfWeek;
+    shiftId: string;
+  } | null>(null);
+  const [draftStartTime, setDraftStartTime] = useState('');
+  const [draftEndTime, setDraftEndTime] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
 
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -970,18 +968,47 @@ function ScheduleGrid({
     return assignments;
   };
 
-  // Determine shift type based on start time: before 10 = morning, 10-16 = mid, 16+ = dinner/night
+  // Determine shift type based on start time: before 10 = morning, 10-15 = mid, 15+ = dinner/night
   const getShiftTypeFromTime = (startTime?: string): 'morning' | 'mid' | 'night' => {
     if (!startTime) return 'morning';
     const hour = parseInt(startTime.split(':')[0]);
     if (hour < 10) return 'morning';
-    if (hour < 16) return 'mid';
+    if (hour < 15) return 'mid';
     return 'night';
   };
 
-  const getShiftType = (shiftId: string): 'morning' | 'night' => {
-    if (shiftId.includes('night')) return 'night';
-    return 'morning';
+  const getRoleLabelForAssignment = (day: DayOfWeek, shiftId: string, startTime?: string, endTime?: string): string | null => {
+    if (!shiftId) return null;
+
+    // Prefer staffing template slot label when possible.
+    if (day !== 'monday') {
+      const daySlots = staffingNeeds[day as keyof WeeklyStaffingNeeds]?.slots || [];
+      const exact = daySlots.find(s => s.id === shiftId);
+      const prefix = exact || daySlots.find(s => shiftId.startsWith(s.id));
+      if (prefix) {
+        return normalizeStaffingSlotLabel({
+          label: prefix.label,
+          day,
+          startTime: prefix.startTime || startTime,
+          endTime: prefix.endTime || endTime,
+        });
+      }
+    }
+
+    const lowerShiftId = shiftId.toLowerCase();
+
+    // Fallbacks for generated and manual shifts.
+    if (lowerShiftId.includes('bartender-gap')) return 'Bar Coverage';
+    if (lowerShiftId.includes('early-coverage') || lowerShiftId.includes('-coverage-')) return 'Coverage';
+    if (lowerShiftId.includes('-partial-')) return 'Partial';
+    if (lowerShiftId.includes('-fixed-')) return 'Fixed';
+    if (lowerShiftId.startsWith('manual-')) return 'Manual';
+
+    return null;
+  };
+
+  const getShiftType = (assignmentStartTime?: string): 'morning' | 'night' => {
+    return getMorningOrNightFromStartTime(assignmentStartTime);
   };
 
   const isLocked = (employeeId: string, day: DayOfWeek, shiftType: 'morning' | 'night') => {
@@ -990,18 +1017,28 @@ function ScheduleGrid({
     );
   };
 
-  const handleDragStart = (e: React.DragEvent, employeeId: string, day: DayOfWeek, shiftType: 'morning' | 'night', assignmentIndex: number) => {
+  const handleDragStart = (
+    e: React.DragEvent,
+    employeeId: string,
+    day: DayOfWeek,
+    shiftType: 'morning' | 'night',
+    assignmentIndex: number,
+    shiftId: string,
+    startTime?: string,
+    endTime?: string
+  ) => {
     if (isLocked(employeeId, day, shiftType)) {
       e.preventDefault();
       return;
     }
     e.dataTransfer.effectAllowed = 'move';
-    setDraggedItem({ employeeId, day, shiftType, assignmentIndex });
+    setDraggedItem({ employeeId, day, shiftType, assignmentIndex, shiftId, startTime, endTime });
   };
 
   const handleDragOver = (e: React.DragEvent, employeeId: string, day: DayOfWeek) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+    const isTemplate = Array.from(e.dataTransfer.types).includes(SHIFT_TEMPLATE_MIME_TYPE);
+    e.dataTransfer.dropEffect = isTemplate ? 'copy' : 'move';
     setDropTarget({ employeeId, day });
   };
 
@@ -1011,16 +1048,64 @@ function ScheduleGrid({
 
   const handleDrop = (e: React.DragEvent, targetEmployeeId: string, targetDay: DayOfWeek) => {
     e.preventDefault();
-    if (!draggedItem || !onUpdateSchedule) return;
+    if (!onUpdateSchedule) return;
+
+    // 1) If a shift template is being dropped, add a new assignment.
+    const templateRaw = e.dataTransfer.getData(SHIFT_TEMPLATE_MIME_TYPE);
+    if (templateRaw) {
+      const parsed = parseShiftTemplateDragPayload(templateRaw);
+      if (!parsed) return;
+      if (targetDay === 'monday') return;
+
+      const dateStr = getDateStringForDay(targetDay);
+      const { template } = parsed;
+
+      if (employeeHasOverlappingAssignment(schedule.assignments, targetEmployeeId, dateStr, template.startTime, template.endTime)) {
+        window.alert('Cannot add this shift because it overlaps another shift for this employee on that day.');
+        setDropTarget(null);
+        return;
+      }
+
+      const nonce = String(Date.now());
+      const picked = pickShiftIdForManualAssignment({
+        staffingNeeds,
+        assignments: schedule.assignments,
+        date: dateStr,
+        day: targetDay,
+        template,
+        nonce,
+      });
+
+      onUpdateSchedule({
+        ...schedule,
+        assignments: [
+          ...schedule.assignments,
+          {
+            shiftId: picked.shiftId,
+            employeeId: targetEmployeeId,
+            date: dateStr,
+            startTime: template.startTime,
+            endTime: template.endTime,
+          },
+        ],
+      });
+
+      setDropTarget(null);
+      return;
+    }
+
+    if (!draggedItem) return;
 
     const targetDayFull = targetDay;
     const sourceDayFull = draggedItem.day;
+    const sourceDateStr = getDateStringForDay(sourceDayFull);
+    const targetDateStr = getDateStringForDay(targetDayFull);
 
     // Find the source assignment
     const sourceAssignmentIdx = schedule.assignments.findIndex(a =>
       a.employeeId === draggedItem.employeeId &&
-      a.date === getDateStringForDay(sourceDayFull) &&
-      getShiftType(a.shiftId) === draggedItem.shiftType
+      a.date === sourceDateStr &&
+      a.shiftId === draggedItem.shiftId
     );
 
     if (sourceAssignmentIdx === -1) {
@@ -1035,34 +1120,77 @@ function ScheduleGrid({
     // Check if the target cell already has an assignment
     const targetAssignmentIdx = newAssignments.findIndex(a =>
       a.employeeId === targetEmployeeId &&
-      a.date === getDateStringForDay(targetDayFull)
+      a.date === targetDateStr
     );
 
     if (targetAssignmentIdx !== -1) {
       // Swap: move target to source location
       const targetAssignment = newAssignments[targetAssignmentIdx];
+      const targetShiftType = getShiftType(targetAssignment.startTime);
+      if (isLocked(targetEmployeeId, targetDayFull, targetShiftType)) {
+        window.alert('That shift is locked. Unlock it before swapping.');
+        setDraggedItem(null);
+        setDropTarget(null);
+        return;
+      }
 
-      // Update target assignment to source location
+      const baseAssignments = newAssignments.filter((_, idx) => idx !== sourceAssignmentIdx && idx !== targetAssignmentIdx);
+
+      const mappedTargetToSourceShiftId = mapShiftIdForDayMove({
+        staffingNeeds,
+        assignments: baseAssignments,
+        targetDay: sourceDayFull,
+        targetDate: sourceDateStr,
+        startTime: targetAssignment.startTime,
+        endTime: targetAssignment.endTime,
+        currentShiftId: targetAssignment.shiftId,
+        nonce: String(Date.now()),
+      });
+
+      const mappedSourceToTargetShiftId = mapShiftIdForDayMove({
+        staffingNeeds,
+        assignments: baseAssignments,
+        targetDay: targetDayFull,
+        targetDate: targetDateStr,
+        startTime: sourceAssignment.startTime,
+        endTime: sourceAssignment.endTime,
+        currentShiftId: sourceAssignment.shiftId,
+        nonce: String(Date.now()),
+      });
+
+      // Update target assignment to source location (employee + day swap)
       newAssignments[targetAssignmentIdx] = {
         ...targetAssignment,
         employeeId: draggedItem.employeeId,
-        date: sourceAssignment.date,
-        shiftId: sourceAssignment.shiftId.replace(draggedItem.day.slice(0, 3), targetDay.toLowerCase().slice(0, 3)),
+        date: sourceDateStr,
+        shiftId: mappedTargetToSourceShiftId,
       };
 
-      // Update source assignment to target location
+      // Update source assignment to target location (employee + day swap)
       newAssignments[sourceAssignmentIdx] = {
         ...sourceAssignment,
         employeeId: targetEmployeeId,
-        date: getDateStringForDay(targetDayFull),
-        shiftId: targetAssignment.shiftId,
+        date: targetDateStr,
+        shiftId: mappedSourceToTargetShiftId,
       };
     } else {
       // Move: just update the source assignment to the new location
+      const baseAssignments = newAssignments.filter((_, idx) => idx !== sourceAssignmentIdx);
+      const mappedShiftId = mapShiftIdForDayMove({
+        staffingNeeds,
+        assignments: baseAssignments,
+        targetDay: targetDayFull,
+        targetDate: targetDateStr,
+        startTime: sourceAssignment.startTime,
+        endTime: sourceAssignment.endTime,
+        currentShiftId: sourceAssignment.shiftId,
+        nonce: String(Date.now()),
+      });
       newAssignments[sourceAssignmentIdx] = {
         ...sourceAssignment,
         employeeId: targetEmployeeId,
-        date: getDateStringForDay(targetDayFull),
+        date: targetDateStr,
+        shiftId: mappedShiftId,
       };
     }
 
@@ -1078,6 +1206,64 @@ function ScheduleGrid({
   const handleDragEnd = () => {
     setDraggedItem(null);
     setDropTarget(null);
+  };
+
+  const startEditing = (key: { employeeId: string; date: string; day: DayOfWeek; shiftId: string }, startTime?: string, endTime?: string) => {
+    setEditError(null);
+    setEditingShiftKey(key);
+    setDraftStartTime(startTime || '');
+    setDraftEndTime(endTime || '');
+  };
+
+  const cancelEditing = () => {
+    setEditError(null);
+    setEditingShiftKey(null);
+    setDraftStartTime('');
+    setDraftEndTime('');
+  };
+
+  const saveEditedTime = () => {
+    if (!onUpdateSchedule || !editingShiftKey) return;
+    if (!draftStartTime || !draftEndTime) {
+      setEditError('Start and end times are required.');
+      return;
+    }
+
+    try {
+      const existing = schedule.assignments.find(a =>
+        a.employeeId === editingShiftKey.employeeId &&
+        a.date === editingShiftKey.date &&
+        a.shiftId === editingShiftKey.shiftId
+      );
+      if (!existing) {
+        setEditError('Shift not found.');
+        return;
+      }
+
+      const existingShiftType = getShiftType(existing.startTime);
+      const nextShiftType = getShiftType(draftStartTime);
+      const isExistingLocked = isLocked(editingShiftKey.employeeId, editingShiftKey.day, existingShiftType);
+      if (isExistingLocked && existingShiftType !== nextShiftType) {
+        setEditError('Unlock this shift before changing it from morning to night or night to morning.');
+        return;
+      }
+
+      const updated = updateScheduleAssignmentTime({
+        schedule,
+        key: {
+          employeeId: editingShiftKey.employeeId,
+          date: editingShiftKey.date,
+          shiftId: editingShiftKey.shiftId,
+        },
+        startTime: draftStartTime,
+        endTime: draftEndTime,
+      });
+      onUpdateSchedule(updated);
+      cancelEditing();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not update this shift.';
+      setEditError(message);
+    }
   };
 
   return (
@@ -1105,6 +1291,7 @@ function ScheduleGrid({
                 const assignments = getAssignmentForEmployeeDay(emp.id, day);
                 const isClosed = day === 'Mon';
                 const isDropping = dropTarget?.employeeId === emp.id && dropTarget?.day === dayFull;
+                const assignmentDate = getDateStringForDay(dayFull);
 
                 return (
                   <td
@@ -1118,10 +1305,16 @@ function ScheduleGrid({
                     {assignments.length > 0 ? (
                       <div className="space-y-1">
                         {assignments.map((a, i) => {
-                          const shiftType = getShiftType(a.shiftId);
+                          const shiftType = getShiftType(a.startTime);
                           const shiftTypeByTime = getShiftTypeFromTime(a.startTime);
                           const locked = isLocked(emp.id, dayFull, shiftType);
                           const isDragging = draggedItem?.employeeId === emp.id && draggedItem?.day === dayFull;
+                          const isEditing = Boolean(
+                            editingShiftKey &&
+                            editingShiftKey.employeeId === emp.id &&
+                            editingShiftKey.date === assignmentDate &&
+                            editingShiftKey.shiftId === a.shiftId
+                          );
 
                           // Colors: morning = orange, mid = green, night/dinner = red (brightened)
                           const shiftColorClass = shiftTypeByTime === 'night'
@@ -1133,17 +1326,83 @@ function ScheduleGrid({
                           return (
                             <div
                               key={i}
-                              draggable={!locked}
-                              onDragStart={(e) => handleDragStart(e, emp.id, dayFull, shiftType, i)}
+                              draggable={!locked && !isEditing}
+                              onDragStart={(e) => handleDragStart(e, emp.id, dayFull, shiftType, i, a.shiftId, a.startTime, a.endTime)}
                               onDragEnd={handleDragEnd}
                               className={`relative text-sm py-1 px-2 rounded-md font-medium cursor-grab active:cursor-grabbing transition-all ${locked ? 'ring-2 ring-[#e5a825]' : ''
                                 } ${isDragging ? 'opacity-50 scale-95' : ''
                                 } ${shiftColorClass}`}
                             >
-                              {a.startTime && a.endTime ? (
-                                <span>{formatTime(a.startTime)} - {formatTime(a.endTime)}</span>
+                              {isEditing ? (
+                                <div className="space-y-1 text-left pr-6 pl-6">
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-[10px] text-[#a0a0a8] w-10">Start</label>
+                                    <input
+                                      type="time"
+                                      value={draftStartTime}
+                                      onChange={(e) => setDraftStartTime(e.target.value)}
+                                      className="flex-1 bg-[#141417] border border-[#2a2a32] rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-[10px] text-[#a0a0a8] w-10">End</label>
+                                    <input
+                                      type="time"
+                                      value={draftEndTime}
+                                      onChange={(e) => setDraftEndTime(e.target.value)}
+                                      className="flex-1 bg-[#141417] border border-[#2a2a32] rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-end gap-2 pt-0.5">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        saveEditedTime();
+                                      }}
+                                      className="px-2 py-0.5 text-[10px] font-semibold bg-[#e5a825] text-[#0d0d0f] rounded hover:bg-[#f0b429]"
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        cancelEditing();
+                                      }}
+                                      className="px-2 py-0.5 text-[10px] font-semibold bg-[#2a2a32] text-[#a0a0a8] rounded hover:bg-[#3a3a45]"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                  {editError && (
+                                    <div className="text-[10px] text-[#ef4444] pt-0.5">
+                                      {editError}
+                                    </div>
+                                  )}
+                                </div>
                               ) : (
-                                <span>{shiftType === 'night' ? 'Night' : 'Morning'}</span>
+                                <div className="text-left pr-6 pl-6 leading-tight">
+                                  {(() => {
+                                    const role = getRoleLabelForAssignment(dayFull, a.shiftId, a.startTime, a.endTime);
+                                    const timeText = a.startTime && a.endTime
+                                      ? `${formatTime(a.startTime)} - ${formatTime(a.endTime)}`
+                                      : (shiftType === 'night' ? 'Night' : 'Morning');
+
+                                    return (
+                                      <>
+                                        {role && (
+                                          <div className="text-[10px] font-semibold text-[#a0a0a8]">
+                                            {role}
+                                          </div>
+                                        )}
+                                        <div className="text-[12px] font-semibold">
+                                          {timeText}
+                                        </div>
+                                      </>
+                                    );
+                                  })()}
+                                </div>
                               )}
 
                               {/* Lock Toggle Button */}
@@ -1158,16 +1417,37 @@ function ScheduleGrid({
                                   }`}
                                 title={locked ? 'Unlock shift' : 'Lock shift'}
                               >
-                                {locked ? 'L' : 'U'}
+                                {locked ? <LockClosedIcon className="w-3 h-3" /> : <LockOpenIcon className="w-3 h-3" />}
+                              </button>
+
+                              {/* Edit Button */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  startEditing(
+                                    { employeeId: emp.id, date: assignmentDate, day: dayFull, shiftId: a.shiftId },
+                                    a.startTime,
+                                    a.endTime
+                                  );
+                                }}
+                                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-xs transition-all bg-[#3b82f6]/20 text-[#3b82f6] opacity-0 group-hover:opacity-100 hover:bg-[#3b82f6]/30 border border-[#3b82f6]/30"
+                                title="Edit time"
+                                aria-label="Edit time"
+                                type="button"
+                              >
+                                <PencilIcon className="w-3 h-3" />
                               </button>
 
                               {/* Delete Button */}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  if (locked) {
+                                    // Keep locks consistent with the actual assignments in the grid.
+                                    onToggleLock(emp.id, dayFull, shiftType);
+                                  }
                                   if (onUpdateSchedule) {
                                     const newAssignments = schedule.assignments.filter((_, idx) => {
-                                      const assignmentDate = getDateStringForDay(dayFull);
                                       const currentAssignment = schedule.assignments[idx];
                                       // Find the matching assignment to remove
                                       return !(
@@ -1326,6 +1606,14 @@ function LockClosedIcon({ className }: { className?: string }) {
   );
 }
 
+function LockOpenIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0m-.75 3.75h10.5a2.25 2.25 0 012.25 2.25v6.75a2.25 2.25 0 01-2.25 2.25H6.75a2.25 2.25 0 01-2.25-2.25v-6.75a2.25 2.25 0 012.25-2.25z" />
+    </svg>
+  );
+}
+
 function TrashIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1358,10 +1646,26 @@ function XIcon({ className }: { className?: string }) {
   );
 }
 
+function PencilIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 3.487a2.25 2.25 0 013.182 3.182L7.5 19.213 3 20.25l1.037-4.5L16.862 3.487z" />
+    </svg>
+  );
+}
+
 function ArchiveBoxIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0l-3-3m3 3l3-3M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+    </svg>
+  );
+}
+
+function SendIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.27 3.125A59.77 59.77 0 0121.485 12 59.77 59.77 0 013.27 20.875L6 12zm0 0h7.5" />
     </svg>
   );
 }

@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { ScheduleOverride, Employee, WeeklyStaffingNeeds, StaffingSlot } from '@/lib/types';
+import { ScheduleOverride, Employee, WeeklyStaffingNeeds, StaffingSlot, DayOfWeek } from '@/lib/types';
 import { parseScheduleNotes, formatParsedOverrides } from '@/lib/parseNotes';
+import { normalizeStaffingSlotLabel } from '@/lib/scheduling/labels';
 
 interface DebouncedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
   value: string;
@@ -251,8 +252,18 @@ export default function NotesAndStaffingView({
     setStaffingNeeds(newNeeds);
   };
 
-  const getSlotLabel = (index: number): string => {
-    const labels = ['Opener', '2nd Server', 'Bar', '3rd Server', '4th Server', '5th Server', '6th Server'];
+  const getSlotLabel = (day: keyof WeeklyStaffingNeeds, index: number): string => {
+    const labels = [
+      day === 'saturday' || day === 'sunday' ? 'Weekend Opener' : 'Opener',
+      '2nd Server',
+      'Mid Shift',
+      'Bar',
+      '3rd Server',
+      'Closer',
+      '4th Server',
+      '5th Server',
+      '6th Server',
+    ];
     return labels[index] || `Server ${index + 1}`;
   };
 
@@ -264,7 +275,7 @@ export default function NotesAndStaffingView({
       id: `${day}-${Date.now()}`,
       startTime: '09:00',
       endTime: '17:00',
-      label: getSlotLabel(slots.length)
+      label: getSlotLabel(day, slots.length)
     };
     newNeeds[day] = { ...dayData, slots: [...slots, newSlot] };
     setStaffingNeeds(newNeeds);
@@ -628,6 +639,22 @@ Examples:
                         placeholder="Label"
                         className="flex-1 px-2 py-1 text-sm bg-[#141417] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825] placeholder:text-[#6b6b75]"
                       />
+
+                      <select
+                        value={normalizeStaffingSlotLabel({ label: slot.label, day: key as DayOfWeek, startTime: slot.startTime, endTime: slot.endTime })}
+                        onChange={(e) => updateSlot(key, slot.id, 'label', e.target.value)}
+                        className="px-2 py-1 text-xs bg-[#141417] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 hidden md:block"
+                        title="Quick label preset"
+                      >
+                        <option value="Opener">Opener</option>
+                        {(key === 'saturday' || key === 'sunday') && <option value="Weekend Opener">Weekend Opener</option>}
+                        <option value="2nd Server">2nd Server</option>
+                        <option value="3rd Server">3rd Server</option>
+                        <option value="Mid Shift">Mid Shift</option>
+                        <option value="Bar">Bar</option>
+                        <option value="Closer">Closer</option>
+                        <option value="Dinner">Dinner</option>
+                      </select>
 
                       <DebouncedInput
                         type="time"

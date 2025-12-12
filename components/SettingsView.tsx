@@ -1,9 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { WeeklySchedule, Employee, ScheduleAssignment, WeeklyStaffingNeeds, StaffingSlot } from '@/lib/types';
+import { WeeklySchedule, Employee, ScheduleAssignment, WeeklyStaffingNeeds, StaffingSlot, DayOfWeek } from '@/lib/types';
 import UserManagement from './UserManagement';
 import { User } from '@/lib/instantdb';
+import { normalizeStaffingSlotLabel } from '@/lib/scheduling/labels';
+import { cloneWeeklyStaffingNeedsWithFreshIds, RECOMMENDED_WEEKLY_STAFFING_NEEDS } from '@/lib/staffingPresets';
+import { validateStaffingNeeds } from '@/lib/staffingValidation';
 
 export interface AppSettings {
   // Business Settings
@@ -1105,7 +1108,16 @@ function StaffingSection({ staffingNeeds, setStaffingNeeds, saveAsDefaultTemplat
     const newNeeds = { ...staffingNeeds };
     const dayData = newNeeds[day];
     const slots = dayData.slots || [];
-    const labels = ['Opener', '2nd Server', 'Bar', '3rd Server', '4th', '5th'];
+
+    const labels = [
+      day === 'saturday' || day === 'sunday' ? 'Weekend Opener' : 'Opener',
+      '2nd Server',
+      'Mid Shift',
+      'Bar',
+      '3rd Server',
+      'Closer',
+    ];
+
     const newSlot: StaffingSlot = {
       id: `${day}-${Date.now()}`,
       startTime: '09:00',
@@ -1165,6 +1177,18 @@ function StaffingSection({ staffingNeeds, setStaffingNeeds, saveAsDefaultTemplat
 
   const getTotalSlots = () => Object.values(staffingNeeds).reduce((sum, day) => sum + (day.slots?.length || 0), 0);
 
+  const validationIssues = validateStaffingNeeds({
+    staffingNeeds,
+    businessOpenTimeByDay: {
+      tuesday: '07:15',
+      wednesday: '07:15',
+      thursday: '07:15',
+      friday: '07:15',
+      saturday: '07:15',
+      sunday: '07:15',
+    },
+  });
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -1178,6 +1202,17 @@ function StaffingSection({ staffingNeeds, setStaffingNeeds, saveAsDefaultTemplat
             <p className="text-xs text-[#6b6b75] mt-0.5">{getTotalSlots()} shifts across {days.length} days</p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const ok = window.confirm('Replace the current staffing template with the recommended template?');
+                if (!ok) return;
+                setStaffingNeeds(cloneWeeklyStaffingNeedsWithFreshIds(RECOMMENDED_WEEKLY_STAFFING_NEEDS));
+              }}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors bg-[#141417] text-white border border-[#2a2a32] hover:bg-[#222228]"
+              title="Applies the recommended weekday pattern (07:15 opener ends 12:00, Friday adds 10:00 and noon shifts)"
+            >
+              Load Recommended
+            </button>
             {saveAsDefaultTemplate && (
               <button
                 onClick={saveAsDefaultTemplate}
@@ -1197,6 +1232,19 @@ function StaffingSection({ staffingNeeds, setStaffingNeeds, saveAsDefaultTemplat
           </div>
         </div>
       </div>
+
+      {validationIssues.length > 0 && (
+        <div className="bg-[#141417] rounded-xl border border-[#ef4444]/30 p-4">
+          <div className="text-sm font-semibold text-white mb-2">Template checks</div>
+          <div className="space-y-1">
+            {validationIssues.map((issue, idx) => (
+              <div key={idx} className="text-xs text-[#fca5a5]">
+                {issue.message}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Quick Overview - Horizontal Day Pills */}
       <div className="flex gap-2 overflow-x-auto pb-2">
@@ -1287,6 +1335,7 @@ function StaffingSection({ staffingNeeds, setStaffingNeeds, saveAsDefaultTemplat
                       <tr key={slot.id} className="border-b border-[#2a2a32]/50 last:border-0 group">
                         <td className="py-2 text-[#6b6b75] text-sm">{index + 1}</td>
                         <td className="py-2">
+                          <div className="flex items-center gap-2">
                           <input
                             type="text"
                             value={slot.label || ''}
@@ -1294,6 +1343,22 @@ function StaffingSection({ staffingNeeds, setStaffingNeeds, saveAsDefaultTemplat
                             className="w-full px-2 py-1 text-sm bg-transparent border border-transparent hover:border-[#2a2a32] focus:border-[#e5a825] focus:bg-[#141417] rounded text-white focus:outline-none transition-colors"
                             placeholder="Role name"
                           />
+                          <select
+                            value={normalizeStaffingSlotLabel({ label: slot.label, day: key as DayOfWeek, startTime: slot.startTime, endTime: slot.endTime })}
+                            onChange={(e) => updateSlot(key, slot.id, 'label', e.target.value)}
+                            className="px-2 py-1 text-xs bg-[#141417] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-1 focus:ring-[#e5a825]/40"
+                            title="Quick label preset"
+                          >
+                            <option value="Opener">Opener</option>
+                            {(key === 'saturday' || key === 'sunday') && <option value="Weekend Opener">Weekend Opener</option>}
+                            <option value="2nd Server">2nd Server</option>
+                            <option value="3rd Server">3rd Server</option>
+                            <option value="Mid Shift">Mid Shift</option>
+                            <option value="Bar">Bar</option>
+                            <option value="Closer">Closer</option>
+                            <option value="Dinner">Dinner</option>
+                          </select>
+                          </div>
                         </td>
                         <td className="py-2">
                           <input

@@ -11,7 +11,14 @@ import {
   WeeklyStaffingNeeds,
   PermanentRule,
   SCHEDULING_RULES,
+  SchedulerOptions,
 } from './types';
+import { getDayOfWeekFromShiftId, getMorningOrNightFromStartTime } from './shiftBuckets';
+import { getShiftBucketFromStartTime } from './shiftBuckets';
+import { markShiftsThatHaveSoloTime } from './scheduling/solo';
+import { isMinRestSatisfiedForCandidate } from './scheduling/rest';
+import { labelImpliesBartender, normalizeStaffingSlotLabel } from './scheduling/labels';
+import { employeeHasRole, isBartenderQualified } from './employeeRoles';
 
 
 // Parse time string to minutes since midnight
@@ -200,10 +207,12 @@ function getFixedShiftRules(employee: Employee): PermanentRule[] {
 function checkMinimumShiftDuration(
   employee: Employee,
   shiftStartTime: string,
-  shiftEndTime: string
+  shiftEndTime: string,
+  minShiftHours: number,
+  bartendingThreshold: number
 ): { allowed: boolean; reason?: string } {
   // Only apply to servers (bartendingScale < 3)
-  if (employee.bartendingScale >= 3) {
+  if (employee.bartendingScale >= bartendingThreshold) {
     return { allowed: true };
   }
 
@@ -211,10 +220,10 @@ function checkMinimumShiftDuration(
   const endMins = timeToMinutes(shiftEndTime);
   const durationHours = (endMins - startMins) / 60;
 
-  if (durationHours < SCHEDULING_RULES.SERVER_MIN_SHIFT_HOURS) {
+  if (durationHours < minShiftHours) {
     return {
       allowed: false,
-      reason: `${employee.name} (server) shift is ${durationHours.toFixed(1)} hours - minimum is ${SCHEDULING_RULES.SERVER_MIN_SHIFT_HOURS} hours`
+      reason: `${employee.name} (server) shift is ${durationHours.toFixed(1)} hours - minimum is ${minShiftHours} hours`
     };
   }
 
@@ -299,9 +308,19 @@ export function generateSchedule(
   employees: Employee[] = [],
   staffingNeeds?: WeeklyStaffingNeeds,
   lockedShifts?: { employeeId: string; day: DayOfWeek; shiftType: 'morning' | 'night' }[],
-  existingAssignments?: ScheduleAssignment[]
+  existingAssignments?: ScheduleAssignment[],
+  options?: SchedulerOptions
 ): WeeklySchedule {
   const weekStart = getWeekStart(weekStartDate);
+
+  const schedulerConfig = {
+    overtimeThresholdHours: options?.overtimeThresholdHours ?? 40,
+    minRestBetweenShiftsHours: options?.minRestBetweenShiftsHours ?? 8,
+    bartendingThreshold: options?.bartendingThreshold ?? 3,
+    aloneThreshold: options?.aloneThreshold ?? 3,
+    minShiftHours: options?.minShiftHours ?? SCHEDULING_RULES.SERVER_MIN_SHIFT_HOURS,
+    businessHours: options?.businessHours,
+  } as const;
 
   // Filter out inactive employees - they should not be scheduled
   // Use this filtered list for all scheduling operations
@@ -318,10 +337,98 @@ export function generateSchedule(
     customEndTime: o.customEndTime
   })));
 
+  const pickStaffingSlotIdPrefixForFixedShift = (params: {
+    day: DayOfWeek;
+    fixedStartTime: string;
+    fixedEndTime: string;
+    employee: Employee;
+  }): string | null => {
+    const { day, fixedStartTime, fixedEndTime, employee } = params;
+    if (!staffingNeeds) return null;
+    if (day === 'monday') return null;
+
+    const needs = staffingNeeds[day as keyof WeeklyStaffingNeeds];
+    const slots = needs?.slots || [];
+
+    const exactMatches = slots.filter(slot => {
+      const clamped = clampShiftToOperatingWindow(day, slot.startTime, slot.endTime);
+      if (!clamped) return false;
+      return clamped.startTime === fixedStartTime && clamped.endTime === fixedEndTime;
+    });
+
+    const employeeHasBarPreferenceForDay = (() => {
+      const avail = employee.availability?.[day as keyof typeof employee.availability] as DayAvailability | null;
+      const shifts = avail?.shifts || [];
+      return shifts.some(s => s.type === 'bar');
+    })();
+
+    const wantsBarSlot = employeeHasRole(employee, 'bar') || employeeHasBarPreferenceForDay;
+
+    if (exactMatches.length > 0) {
+      // If the employee is tagged "bar" (or has Bar Shift availability), prefer a Bar-labeled slot when multiple slots share the same time.
+      if (wantsBarSlot) {
+        const barSlot = exactMatches.find(slot => {
+          const normalizedLabel = normalizeStaffingSlotLabel({
+            label: slot.label,
+            day,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+          });
+          return labelImpliesBartender(normalizedLabel);
+        });
+        if (barSlot) return barSlot.id;
+      }
+
+      return exactMatches[0]?.id || null;
+    }
+
+    // No exact match. Try overlap-based matching so fixed shifts like 15:30-21:00 can still attach
+    // to a 16:00-21:00 staffing slot for labeling and role display.
+    const fixedStartMins = timeToMinutes(fixedStartTime);
+    const fixedEndMins = timeToMinutes(fixedEndTime);
+
+    const candidates = slots
+      .map(slot => {
+        const clamped = clampShiftToOperatingWindow(day, slot.startTime, slot.endTime);
+        if (!clamped) return null;
+        const slotStartMins = timeToMinutes(clamped.startTime);
+        const slotEndMins = timeToMinutes(clamped.endTime);
+        const overlapStart = Math.max(fixedStartMins, slotStartMins);
+        const overlapEnd = Math.min(fixedEndMins, slotEndMins);
+        const overlapMinutes = Math.max(0, overlapEnd - overlapStart);
+        if (overlapMinutes <= 0) return null;
+
+        const normalizedLabel = normalizeStaffingSlotLabel({
+          label: slot.label,
+          day,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+        });
+
+        const isBarSlot = labelImpliesBartender(normalizedLabel);
+        const score = overlapMinutes + (wantsBarSlot && isBarSlot ? 100000 : 0);
+
+        return { slotId: slot.id, score };
+      })
+      .filter((c): c is { slotId: string; score: number } => Boolean(c));
+
+    candidates.sort((a, b) => b.score - a.score);
+    return candidates[0]?.slotId || null;
+  };
+
   // PRE-COMPUTE: Identify closed days and early close times FIRST
   // This needs to happen before ANY shift creation
   const closedDays: Set<DayOfWeek> = new Set();
   const earlyCloseTimes: Map<DayOfWeek, string> = new Map();
+
+  // Apply business-hours closures first (baseline)
+  if (schedulerConfig.businessHours) {
+    for (const [day, hours] of Object.entries(schedulerConfig.businessHours) as Array<[DayOfWeek, { open: string; close: string; closed: boolean }]>) {
+      if (hours?.closed) {
+        closedDays.add(day);
+      }
+    }
+  }
 
   for (const override of overrides) {
     if (override.employeeId === '__ALL__' && override.type === 'exclude') {
@@ -340,6 +447,49 @@ export function generateSchedule(
   // Helper to get early close time for a day (returns null if no early close)
   const getEarlyCloseTime = (day: DayOfWeek): string | null => earlyCloseTimes.get(day) || null;
 
+  const getBusinessHours = (day: DayOfWeek): { open: string; close: string; closed: boolean } | null => {
+    if (!schedulerConfig.businessHours) return null;
+    return schedulerConfig.businessHours[day] || null;
+  };
+
+  const clampShiftToOperatingWindow = (
+    day: DayOfWeek,
+    startTime: string,
+    endTime: string
+  ): { startTime: string; endTime: string } | null => {
+    const business = getBusinessHours(day);
+    if (business?.closed) return null;
+
+    let effectiveStart = startTime;
+    let effectiveEnd = endTime;
+
+    const earlyClose = getEarlyCloseTime(day);
+    const closeLimit = (() => {
+      if (business?.close && earlyClose) {
+        return timeToMinutes(business.close) < timeToMinutes(earlyClose) ? business.close : earlyClose;
+      }
+      return earlyClose || business?.close || null;
+    })();
+
+    if (business?.open) {
+      if (timeToMinutes(effectiveStart) < timeToMinutes(business.open)) {
+        effectiveStart = business.open;
+      }
+    }
+
+    if (closeLimit) {
+      if (timeToMinutes(effectiveEnd) > timeToMinutes(closeLimit)) {
+        effectiveEnd = closeLimit;
+      }
+    }
+
+    if (timeToMinutes(effectiveStart) >= timeToMinutes(effectiveEnd)) {
+      return null;
+    }
+
+    return { startTime: effectiveStart, endTime: effectiveEnd };
+  };
+
   // 1. Process overrides and set schedules to create initial assignments
   const assignments: ScheduleAssignment[] = [];
   const conflicts: ScheduleConflict[] = [];
@@ -354,9 +504,8 @@ export function generateSchedule(
   });
 
   // Helper to determine shift type from start time
-  const determineShiftType = (time: string): 'morning' | 'night' => {
-    const hour = parseInt(time.split(':')[0]);
-    return hour < 16 ? 'morning' : 'night';
+  const determineShiftType = (time: string): 'morning' | 'mid' | 'night' => {
+    return getShiftBucketFromStartTime(time);
   };
 
   // Helper to calculate duration from time strings (HH:MM)
@@ -422,7 +571,7 @@ export function generateSchedule(
       const existingAssignment = existingAssignments.find(a =>
         a.employeeId === lock.employeeId &&
         a.date === lockDateStr &&
-        (lock.shiftType === 'night' ? a.shiftId.includes('night') : !a.shiftId.includes('night'))
+        getMorningOrNightFromStartTime(a.startTime) === lock.shiftType
       );
 
       if (existingAssignment) {
@@ -499,7 +648,7 @@ export function generateSchedule(
         const shiftId = `${setShift.day}-${setShift.shiftType}`;
 
         // Create a synthetic shift object for the assignment
-        const shiftStartTime = setShift.startTime || (setShift.shiftType === 'morning' ? dayStaffing?.morningStart : dayStaffing?.nightStart) || '09:00';
+        let shiftStartTime = setShift.startTime || (setShift.shiftType === 'morning' ? dayStaffing?.morningStart : dayStaffing?.nightStart) || '09:00';
         let shiftEndTime = setShift.endTime || (setShift.shiftType === 'morning' ? dayStaffing?.morningEnd : dayStaffing?.nightEnd) || '17:00';
 
         // CHECK TIME RESTRICTIONS - employee may have no_before, no_after, unavailable_range
@@ -509,25 +658,14 @@ export function generateSchedule(
           return;
         }
 
-        // Check early close and adjust
-        const earlyClose = getEarlyCloseTime(setShift.day);
-        if (earlyClose) {
-          const earlyCloseMins = timeToMinutes(earlyClose);
-          const startMins = timeToMinutes(shiftStartTime);
-          const endMins = timeToMinutes(shiftEndTime);
-
-          // Skip shifts that start after early close
-          if (startMins >= earlyCloseMins) {
-            console.log(`Skipping set schedule for ${emp.name} - starts after early close (${earlyClose})`);
-            return;
-          }
-
-          // Truncate shifts that end after early close
-          if (endMins > earlyCloseMins) {
-            shiftEndTime = earlyClose;
-            console.log(`Truncating set schedule for ${emp.name} to end at ${earlyClose}`);
-          }
+        // Clamp to business hours and early close
+        const clamped = clampShiftToOperatingWindow(setShift.day, shiftStartTime, shiftEndTime);
+        if (!clamped) {
+          console.log(`Skipping set schedule for ${emp.name} on ${setShift.day} - outside operating window`);
+          return;
         }
+        shiftStartTime = clamped.startTime;
+        shiftEndTime = clamped.endTime;
 
         const shift: { id: string; startTime: string; endTime: string; duration: number; } = {
           id: shiftId,
@@ -615,31 +753,29 @@ export function generateSchedule(
         let shiftStartTime = rule.startTime || '09:00';
         let shiftEndTime = rule.endTime || '17:00';
 
-        // Check early close and adjust
-        const earlyClose = getEarlyCloseTime(ruleDay);
-        if (earlyClose) {
-          const earlyCloseMins = timeToMinutes(earlyClose);
-          const startMins = timeToMinutes(shiftStartTime);
-          const endMins = timeToMinutes(shiftEndTime);
-
-          // Skip if shift starts after early close
-          if (startMins >= earlyCloseMins) {
-            console.log(`Skipping fixed rule for ${emp.name} - starts after early close (${earlyClose})`);
-            continue;
-          }
-
-          // Truncate if ends after early close
-          if (endMins > earlyCloseMins) {
-            shiftEndTime = earlyClose;
-            console.log(`Truncating fixed rule for ${emp.name} to end at ${earlyClose}`);
-          }
+        // Clamp to business hours and early close
+        const clamped = clampShiftToOperatingWindow(ruleDay, shiftStartTime, shiftEndTime);
+        if (!clamped) {
+          console.log(`Skipping fixed rule for ${emp.name} on ${ruleDay} - outside operating window`);
+          continue;
         }
+        shiftStartTime = clamped.startTime;
+        shiftEndTime = clamped.endTime;
 
         // Determine shift type based on start time
         const startHour = parseInt(shiftStartTime.split(':')[0]);
         const shiftType = startHour < 12 ? 'morning' : startHour < 16 ? 'mid' : 'night';
 
-        const shiftId = `${ruleDay}-fixed-${emp.id}`;
+        const slotIdPrefix = pickStaffingSlotIdPrefixForFixedShift({
+          day: ruleDay,
+          fixedStartTime: shiftStartTime,
+          fixedEndTime: shiftEndTime,
+          employee: emp,
+        });
+
+        const shiftId = slotIdPrefix
+          ? `${slotIdPrefix}-fixed-${emp.id}`
+          : `${ruleDay}-fixed-${emp.id}`;
         const shift = {
           id: shiftId,
           startTime: shiftStartTime,
@@ -666,7 +802,7 @@ export function generateSchedule(
   // Assign and exclude overrides will be used later in the assignShift function.
 
   // Process each day
-  const days: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']; // Include Monday for set schedules
+  const days: DayOfWeek[] = ['tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
   for (const day of days) {
     const dateStr = getDateForDay(weekStart, day);
@@ -687,8 +823,8 @@ export function generateSchedule(
       dayOverrideDetails: dayOverrides
     });
 
-    // Check for business-wide rules first
-    const isClosed = dayOverrides.some(o => o.employeeId === '__ALL__' && o.type === 'exclude');
+    // Check for business-wide rules first (including Settings-based closures)
+    const isClosed = isDayClosed(day);
     console.log(`${day} isClosed:`, isClosed);
     if (isClosed) {
       // Skip this day entirely - business is closed
@@ -707,65 +843,84 @@ export function generateSchedule(
     // Get shifts for this day based on staffing needs (new slots format)
     const shifts: Shift[] = [];
 
-    // Count how many fixed shift assignments were already made for this day
-    // Fixed shifts should count toward the daily staffing limit
-    const fixedShiftAssignmentsForDay = assignments.filter(a =>
-      a.date === dateStr && a.shiftId.includes('-fixed-')
-    ).length;
+    // Fixed shift assignments already made for this day.
+    // When a fixed shift matches a staffing slot (same time range), we should remove that slot,
+    // rather than dropping an arbitrary slot from the end of the day.
+    const fixedShiftAssignmentsForDay = assignments.filter(a => a.date === dateStr && a.shiftId.includes('-fixed-'));
+
+    const fixedShiftWindowsForDay = fixedShiftAssignmentsForDay
+      .map(a => ({
+        startTime: a.startTime,
+        endTime: a.endTime,
+      }))
+      .filter((w): w is { startTime: string; endTime: string } => Boolean(w.startTime && w.endTime));
 
     if (staffingNeeds) {
       const needs = staffingNeeds[day as keyof WeeklyStaffingNeeds];
       if (needs && needs.slots && needs.slots.length > 0) {
-        // Use the new slots array, but reduce by fixed shift count
-        const slotsToCreate = Math.max(0, needs.slots.length - fixedShiftAssignmentsForDay);
-        console.log(`${day}: ${needs.slots.length} slots configured, ${fixedShiftAssignmentsForDay} fixed shifts already assigned, creating ${slotsToCreate} regular slots`);
+        // Prefer removing the specific slot(s) that are already covered by fixed shifts.
+        // This prevents accidentally dropping a night slot just because it's later in the list.
+        const remainingSlots = [...needs.slots];
+        const removedSlotIds = new Set<string>();
 
-        // Take only the first N slots we still need to fill
-        const slotsToUse = needs.slots.slice(0, slotsToCreate);
+        for (const fixedWindow of fixedShiftWindowsForDay) {
+          // Try to remove an exact time match first.
+          const exactIdx = remainingSlots.findIndex(slot => {
+            const clamped = clampShiftToOperatingWindow(day, slot.startTime, slot.endTime);
+            if (!clamped) return false;
+            return clamped.startTime === fixedWindow.startTime && clamped.endTime === fixedWindow.endTime;
+          });
+
+          if (exactIdx !== -1) {
+            const removed = remainingSlots.splice(exactIdx, 1)[0];
+            if (removed?.id) removedSlotIds.add(removed.id);
+            continue;
+          }
+        }
+
+        console.log(`${day}: ${needs.slots.length} slots configured, ${fixedShiftAssignmentsForDay.length} fixed shifts already assigned, removed ${removedSlotIds.size} slot(s) covered by fixed shifts, creating ${remainingSlots.length} regular slot(s)`);
+
+        const slotsToUse = remainingSlots;
 
         for (const slot of slotsToUse) {
-          let slotEndTime = slot.endTime;
           const slotStartTime = slot.startTime;
+          const slotEndTime = slot.endTime;
 
-          // Apply early close time if set
-          if (earlyCloseTime) {
-            const earlyCloseMins = timeToMinutes(earlyCloseTime);
-            const slotStartMins = timeToMinutes(slot.startTime);
-            const slotEndMins = timeToMinutes(slot.endTime);
+          const clamped = clampShiftToOperatingWindow(day, slotStartTime, slotEndTime);
+          if (!clamped) continue;
 
-            // Skip shifts that start after early close
-            if (slotStartMins >= earlyCloseMins) {
-              continue;
-            }
+          const effectiveStartTime = clamped.startTime;
+          const effectiveEndTime = clamped.endTime;
 
-            // Truncate shifts that end after early close
-            if (slotEndMins > earlyCloseMins) {
-              slotEndTime = earlyCloseTime;
-            }
-          }
-
-          const startHour = parseInt(slotStartTime.split(':')[0]);
-          let shiftType: 'morning' | 'mid' | 'night' = 'mid';
-          if (startHour < 12) shiftType = 'morning';
-          else if (startHour >= 15) shiftType = 'night';
+          const shiftType = getShiftBucketFromStartTime(effectiveStartTime);
+          const normalizedLabel = normalizeStaffingSlotLabel({
+            label: slot.label,
+            day,
+            startTime: effectiveStartTime,
+            endTime: effectiveEndTime,
+          });
 
           shifts.push({
             id: slot.id || `${day}-${slotStartTime}`,
             day,
             type: shiftType,
-            startTime: slotStartTime,
-            endTime: slotEndTime,
-            duration: getShiftDuration(slotStartTime, slotEndTime),
+            startTime: effectiveStartTime,
+            endTime: effectiveEndTime,
+            duration: getShiftDuration(effectiveStartTime, effectiveEndTime),
             requiredStaff: 1, // Each slot is one person
-            name: slot.label || 'Shift',
-            requiresBartender: shiftType === 'night',
+            name: normalizedLabel,
+            // Only mark bartender-required when the role is explicitly a bar role.
+            requiresBartender: labelImpliesBartender(normalizedLabel),
           });
         }
       } else if (needs && (needs.morning || needs.night)) {
         // Fallback to legacy format for backward compatibility
-        // Reduce requiredStaff by fixed shift count
-        const adjustedMorning = Math.max(0, (needs.morning || 0) - fixedShiftAssignmentsForDay);
-        const adjustedNight = Math.max(0, (needs.night || 0) - Math.max(0, fixedShiftAssignmentsForDay - (needs.morning || 0)));
+        // Reduce requiredStaff by fixed shift count per bucket.
+        const fixedMorningCount = fixedShiftAssignmentsForDay.filter(a => getMorningOrNightFromStartTime(a.startTime) === 'morning').length;
+        const fixedNightCount = fixedShiftAssignmentsForDay.filter(a => getMorningOrNightFromStartTime(a.startTime) === 'night').length;
+
+        const adjustedMorning = Math.max(0, (needs.morning || 0) - fixedMorningCount);
+        const adjustedNight = Math.max(0, (needs.night || 0) - fixedNightCount);
 
         if (adjustedMorning > 0) {
           shifts.push({
@@ -827,12 +982,14 @@ export function generateSchedule(
         if (matchingShift) {
           // Assign employee to partial shift (start to their early leave time)
           const partialShiftId = `${matchingShift.id}-partial-${emp.id}`;
+          const clampedPartial = clampShiftToOperatingWindow(day, matchingShift.startTime, customTime.customEndTime!);
+          if (!clampedPartial) continue;
           const partialAssignment: ScheduleAssignment = {
             shiftId: partialShiftId,
             employeeId: emp.id,
             date: dateStr,
-            startTime: matchingShift.startTime,
-            endTime: customTime.customEndTime!
+            startTime: clampedPartial.startTime,
+            endTime: clampedPartial.endTime
           };
 
           // Check if not already assigned
@@ -842,19 +999,21 @@ export function generateSchedule(
 
           if (!alreadyAssigned) {
             assignments.push(partialAssignment);
-            const partialDuration = getShiftDuration(matchingShift.startTime, customTime.customEndTime!);
+            const partialDuration = getShiftDuration(clampedPartial.startTime, clampedPartial.endTime);
             employeeHours[emp.id] = (employeeHours[emp.id] || 0) + partialDuration;
             employeeShifts[emp.id] = (employeeShifts[emp.id] || 0) + 1;
 
             // Create a coverage shift for the remaining time
             const coverageShiftId = `${matchingShift.id}-coverage-${customTime.id}`;
+            const clampedCoverage = clampShiftToOperatingWindow(day, clampedPartial.endTime, matchingShift.endTime);
+            if (!clampedCoverage) continue;
             const coverageShift: Shift = {
               id: coverageShiftId,
               day,
               type: matchingShift.type,
-              startTime: customTime.customEndTime!,
-              endTime: matchingShift.endTime,
-              duration: getShiftDuration(customTime.customEndTime!, matchingShift.endTime),
+              startTime: clampedCoverage.startTime,
+              endTime: clampedCoverage.endTime,
+              duration: getShiftDuration(clampedCoverage.startTime, clampedCoverage.endTime),
               requiredStaff: 1,
               name: `Coverage (${emp.name} leaves at ${customTime.customEndTime})`,
               requiresBartender: matchingShift.requiresBartender
@@ -883,13 +1042,15 @@ export function generateSchedule(
         if (matchingShift) {
           // Create coverage for the early part of the shift
           const coverageShiftId = `${matchingShift.id}-early-coverage-${customTime.id}`;
+          const clampedCoverage = clampShiftToOperatingWindow(day, matchingShift.startTime, customTime.customStartTime!);
+          if (!clampedCoverage) continue;
           const coverageShift: Shift = {
             id: coverageShiftId,
             day,
             type: matchingShift.type,
-            startTime: matchingShift.startTime,
-            endTime: customTime.customStartTime!,
-            duration: getShiftDuration(matchingShift.startTime, customTime.customStartTime!),
+            startTime: clampedCoverage.startTime,
+            endTime: clampedCoverage.endTime,
+            duration: getShiftDuration(clampedCoverage.startTime, clampedCoverage.endTime),
             requiredStaff: 1,
             name: `Coverage (before ${emp.name} at ${customTime.customStartTime})`,
             requiresBartender: matchingShift.requiresBartender
@@ -900,12 +1061,14 @@ export function generateSchedule(
 
           // Assign employee to their late-start shift
           const partialShiftId = `${matchingShift.id}-partial-${emp.id}`;
+          const clampedPartial = clampShiftToOperatingWindow(day, customTime.customStartTime!, matchingShift.endTime);
+          if (!clampedPartial) continue;
           const partialAssignment: ScheduleAssignment = {
             shiftId: partialShiftId,
             employeeId: emp.id,
             date: dateStr,
-            startTime: customTime.customStartTime!,
-            endTime: matchingShift.endTime
+            startTime: clampedPartial.startTime,
+            endTime: clampedPartial.endTime
           };
 
           const alreadyAssigned = assignments.some(a =>
@@ -914,7 +1077,7 @@ export function generateSchedule(
 
           if (!alreadyAssigned) {
             assignments.push(partialAssignment);
-            const partialDuration = getShiftDuration(customTime.customStartTime!, matchingShift.endTime);
+            const partialDuration = getShiftDuration(clampedPartial.startTime, clampedPartial.endTime);
             employeeHours[emp.id] = (employeeHours[emp.id] || 0) + partialDuration;
             employeeShifts[emp.id] = (employeeShifts[emp.id] || 0) + 1;
 
@@ -930,14 +1093,16 @@ export function generateSchedule(
         const shiftId = `custom-${customTime.id}`;
         const startTime = customTime.customStartTime || '09:00';
         const endTime = customTime.customEndTime || '17:00';
+        const clamped = clampShiftToOperatingWindow(day, startTime, endTime);
+        if (!clamped) continue;
 
         const shift: Shift = {
           id: shiftId,
           day,
-          type: determineShiftType(startTime),
-          startTime,
-          endTime,
-          duration: getShiftDuration(startTime, endTime),
+          type: determineShiftType(clamped.startTime),
+          startTime: clamped.startTime,
+          endTime: clamped.endTime,
+          duration: getShiftDuration(clamped.startTime, clamped.endTime),
           requiredStaff: 1,
           name: 'Custom Shift',
           requiresBartender: false
@@ -946,24 +1111,51 @@ export function generateSchedule(
         assignShift(
           shift,
           dateStr,
+          weekStart,
           schedulableEmployees,
           assignments,
           employeeHours,
           employeeShifts,
-          dayOverrides
+          dayOverrides,
+          schedulerConfig
         );
       }
     }
 
-    for (const shift of shifts) {
+    // Mark shifts that contain solo time segments before assigning employees
+    markShiftsThatHaveSoloTime(shifts);
+
+    // Assign the most constrained shifts first.
+    // This prevents a bar-qualified employee being consumed by a generic Dinner slot before Bar is filled,
+    // which can happen when the staffing template lists Dinner before Bar for the same time window.
+    const shiftsToAssign = [...shifts].sort((a, b) => {
+      const aBar = a.requiresBartender ? 1 : 0;
+      const bBar = b.requiresBartender ? 1 : 0;
+      if (aBar !== bBar) return bBar - aBar;
+
+      const aSolo = a.requiresSolo ? 1 : 0;
+      const bSolo = b.requiresSolo ? 1 : 0;
+      if (aSolo !== bSolo) return bSolo - aSolo;
+
+      const aStart = timeToMinutes(a.startTime);
+      const bStart = timeToMinutes(b.startTime);
+      if (aStart !== bStart) return aStart - bStart;
+
+      // Stable-ish tie breaker
+      return (a.id || '').localeCompare(b.id || '');
+    });
+
+    for (const shift of shiftsToAssign) {
       assignShift(
         shift,
         dateStr,
+        weekStart,
         schedulableEmployees,
         assignments,
         employeeHours,
         employeeShifts,
-        dayOverrides
+        dayOverrides,
+        schedulerConfig
       );
 
       // Check if shift was filled - add warning if not
@@ -1007,11 +1199,17 @@ export function generateSchedule(
     }
 
     // Check for overtime
-    if (employeeHours[emp.id] > 38) {
+    if (employeeHours[emp.id] > schedulerConfig.overtimeThresholdHours) {
       warnings.push({
         type: 'overtime',
         employeeId: emp.id,
-        message: `${emp.name} is at ${employeeHours[emp.id].toFixed(1)} hours (approaching overtime)`,
+        message: `${emp.name} is at ${employeeHours[emp.id].toFixed(1)} hours (overtime threshold is ${schedulerConfig.overtimeThresholdHours})`,
+      });
+    } else if (employeeHours[emp.id] > schedulerConfig.overtimeThresholdHours - 2) {
+      warnings.push({
+        type: 'approaching_limit',
+        employeeId: emp.id,
+        message: `${emp.name} is at ${employeeHours[emp.id].toFixed(1)} hours (approaching overtime threshold ${schedulerConfig.overtimeThresholdHours})`,
       });
     }
   }
@@ -1019,13 +1217,11 @@ export function generateSchedule(
   // BARTENDING CONSTRAINT: Employees with bartendingScale < 3 need FULL coverage by someone with bartendingScale >= 3
   // This detects partial gaps and auto-fills them with available bartenders
 
-  // Helper to convert minutes back to time string (12-hour format)
+  // Helper to convert minutes back to time string (24-hour HH:MM)
   const minutesToTime = (mins: number): string => {
-    const h = Math.floor(mins / 60);
+    const h = Math.floor(mins / 60) % 24;
     const m = mins % 60;
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-    return m === 0 ? `${hour12} ${ampm}` : `${hour12}:${m.toString().padStart(2, '0')} ${ampm}`;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
   };
 
   // Group assignments by date to check for overlapping shifts
@@ -1037,10 +1233,110 @@ export function generateSchedule(
     assignmentsByDate[assignment.date].push(assignment);
   }
 
+  const mergeRanges = (ranges: { start: number; end: number }[]): { start: number; end: number }[] => {
+    const sorted = [...ranges].filter(r => r.end > r.start).sort((a, b) => a.start - b.start);
+    const out: { start: number; end: number }[] = [];
+    for (const r of sorted) {
+      const last = out[out.length - 1];
+      if (!last || last.end < r.start) out.push({ ...r });
+      else last.end = Math.max(last.end, r.end);
+    }
+    return out;
+  };
+
+  const intersectRanges = (
+    a: { start: number; end: number }[],
+    b: { start: number; end: number }[]
+  ): { start: number; end: number }[] => {
+    const out: { start: number; end: number }[] = [];
+    const aa = mergeRanges(a);
+    const bb = mergeRanges(b);
+    let i = 0;
+    let j = 0;
+    while (i < aa.length && j < bb.length) {
+      const start = Math.max(aa[i].start, bb[j].start);
+      const end = Math.min(aa[i].end, bb[j].end);
+      if (end > start) out.push({ start, end });
+      if (aa[i].end < bb[j].end) i++;
+      else j++;
+    }
+    return out;
+  };
+
+  const subtractRanges = (
+    base: { start: number; end: number }[],
+    covered: { start: number; end: number }[]
+  ): { start: number; end: number }[] => {
+    const b = mergeRanges(base);
+    const c = mergeRanges(covered);
+    const out: { start: number; end: number }[] = [];
+
+    let j = 0;
+    for (const seg of b) {
+      let curStart = seg.start;
+      while (j < c.length && c[j].end <= seg.start) j++;
+      let k = j;
+      while (k < c.length && c[k].start < seg.end) {
+        if (c[k].start > curStart) out.push({ start: curStart, end: Math.min(c[k].start, seg.end) });
+        curStart = Math.max(curStart, c[k].end);
+        if (curStart >= seg.end) break;
+        k++;
+      }
+      if (curStart < seg.end) out.push({ start: curStart, end: seg.end });
+    }
+    return out;
+  };
+
+  const getDayForDateString = (dateStr: string): DayOfWeek | null => {
+    // dateStr is "YYYY-MM-DD"
+    const base = new Date(weekStart);
+    base.setHours(0, 0, 0, 0);
+    const d = new Date(`${dateStr}T00:00:00`);
+    const delta = Math.round((d.getTime() - base.getTime()) / 86400000);
+    const days: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    if (delta < 0 || delta >= days.length) return null;
+    return days[delta];
+  };
+
+  const getBartenderRequiredRangesForDay = (day: DayOfWeek): { start: number; end: number }[] => {
+    if (!staffingNeeds) return [];
+    if (day === 'monday') return [];
+
+    const dayStaffing = staffingNeeds[day as keyof WeeklyStaffingNeeds];
+    const slots = dayStaffing?.slots || [];
+    const ranges: { start: number; end: number }[] = [];
+
+    for (const slot of slots) {
+      const normalizedLabel = normalizeStaffingSlotLabel({
+        label: slot.label,
+        day,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+      });
+
+      if (!labelImpliesBartender(normalizedLabel)) continue;
+
+      const clamped = clampShiftToOperatingWindow(day, slot.startTime, slot.endTime);
+      if (!clamped) continue;
+
+      ranges.push({ start: timeToMinutes(clamped.startTime), end: timeToMinutes(clamped.endTime) });
+    }
+
+    return mergeRanges(ranges);
+  };
+
   // Check each date for bartending constraints
   for (const date of Object.keys(assignmentsByDate)) {
     const dateAssignments = assignmentsByDate[date];
-    const day = dateAssignments[0]?.shiftId.split('-')[0] as DayOfWeek || 'tuesday';
+    const inferred = getDayForDateString(date) || (dateAssignments[0] ? getDayOfWeekFromShiftId(dateAssignments[0].shiftId) : null);
+    const day: DayOfWeek = inferred || 'tuesday';
+
+    // Only enforce bartender coverage during explicit Bar time windows from the staffing template.
+    // This prevents creating "bar coverage" at opening time unless the template actually has Bar coverage there.
+    const bartenderRequiredRanges = getBartenderRequiredRangesForDay(day);
+    if (bartenderRequiredRanges.length === 0) {
+      continue;
+    }
 
     // Find all employees working this day with their time ranges
     const workingEmployees = dateAssignments.map(a => {
@@ -1053,9 +1349,10 @@ export function generateSchedule(
       };
     }).filter(w => w.employee);
 
-    // Get all 3+ star bartenders working this day
+    // Get all bartenders working this day.
+    // A bartender is either above the configured threshold or explicitly tagged as "bar".
     const bartendersWorking = workingEmployees.filter(w =>
-      w.employee && w.employee.bartendingScale >= 3
+      w.employee && isBartenderQualified({ employee: w.employee, bartendingThreshold: schedulerConfig.bartendingThreshold })
     );
 
     // For each employee who needs bartender coverage, find coverage gaps
@@ -1067,7 +1364,7 @@ export function generateSchedule(
 
       // Check if this employee needs bartender coverage
       const needsCoverageCheck = (
-        working.employee.bartendingScale < 3 ||
+        working.employee.bartendingScale < schedulerConfig.bartendingThreshold ||
         working.employee.preferences?.needsBartenderOnShift === true
       );
 
@@ -1077,40 +1374,28 @@ export function generateSchedule(
       const shiftStart = working.startMinutes;
       const shiftEnd = working.endMinutes;
 
+      // Only require bartender coverage for this employee during Bar-required windows.
+      const requiredSegments = intersectRanges(
+        [{ start: shiftStart, end: shiftEnd }],
+        bartenderRequiredRanges
+      );
+
+      if (requiredSegments.length === 0) continue;
+
       // Build a list of covered time ranges from 3+ star bartenders
       const coveredRanges: { start: number; end: number }[] = [];
       for (const bartender of bartendersWorking) {
-        // Check overlap with this employee's shift
-        const overlapStart = Math.max(shiftStart, bartender.startMinutes);
-        const overlapEnd = Math.min(shiftEnd, bartender.endMinutes);
-        if (overlapStart < overlapEnd) {
-          coveredRanges.push({ start: overlapStart, end: overlapEnd });
+        for (const segment of requiredSegments) {
+          const overlapStart = Math.max(segment.start, bartender.startMinutes);
+          const overlapEnd = Math.min(segment.end, bartender.endMinutes);
+          if (overlapStart < overlapEnd) coveredRanges.push({ start: overlapStart, end: overlapEnd });
         }
       }
 
-      // Merge overlapping covered ranges
-      coveredRanges.sort((a, b) => a.start - b.start);
-      const mergedCovered: { start: number; end: number }[] = [];
-      for (const range of coveredRanges) {
-        if (mergedCovered.length === 0 || mergedCovered[mergedCovered.length - 1].end < range.start) {
-          mergedCovered.push({ ...range });
-        } else {
-          mergedCovered[mergedCovered.length - 1].end = Math.max(mergedCovered[mergedCovered.length - 1].end, range.end);
-        }
-      }
+      const mergedCovered = mergeRanges(coveredRanges);
 
-      // Find gaps in coverage
-      const gaps: { start: number; end: number }[] = [];
-      let currentPos = shiftStart;
-      for (const covered of mergedCovered) {
-        if (covered.start > currentPos) {
-          gaps.push({ start: currentPos, end: covered.start });
-        }
-        currentPos = Math.max(currentPos, covered.end);
-      }
-      if (currentPos < shiftEnd) {
-        gaps.push({ start: currentPos, end: shiftEnd });
-      }
+      // Find gaps in coverage within required Bar segments
+      const gaps = subtractRanges(requiredSegments, mergedCovered);
 
       // For each gap, try to find an available bartender to fill it
       for (const gap of gaps) {
@@ -1118,9 +1403,9 @@ export function generateSchedule(
         const gapEndTime = minutesToTime(gap.end);
         const gapDuration = (gap.end - gap.start) / 60;
 
-        // Find available bartenders (3+ rating) who aren't already scheduled that day
+        // Find available bartenders who aren't already scheduled that day
         const availableBartenders = schedulableEmployees.filter(emp => {
-          if (emp.bartendingScale < 3) return false;
+          if (!isBartenderQualified({ employee: emp, bartendingThreshold: schedulerConfig.bartendingThreshold })) return false;
           // Check if already working that day (could extend their shift but for now find new coverage)
           if (dateAssignments.some(a => a.employeeId === emp.id)) return false;
           // Check date-based exclusions (vacations, unavailable dates)
@@ -1137,7 +1422,7 @@ export function generateSchedule(
           const isExcludedByOverride = dayOverridesForGap.some(o =>
             o.type === 'exclude' &&
             o.employeeId === emp.id &&
-            (o.shiftType === 'any' || o.shiftType === 'night') // Gap filling is typically for night coverage
+            (o.shiftType === 'any' || o.shiftType === 'night')
           );
           if (isExcludedByOverride) {
             console.log(`[GAP FILL BLOCKED] ${emp.name} blocked from gap fill on ${day} by exclude override`);
@@ -1349,11 +1634,18 @@ function employeeAlreadyAssignedDuringShift(
 function assignShift(
   shift: Shift,
   date: string,
+  weekStart: Date,
   employees: Employee[],
   assignments: ScheduleAssignment[],
   employeeHours: Record<string, number>,
   employeeShiftCounts: Record<string, number>,
-  overrides: ScheduleOverride[]
+  overrides: ScheduleOverride[],
+  schedulerConfig: {
+    minRestBetweenShiftsHours: number;
+    bartendingThreshold: number;
+    aloneThreshold: number;
+    minShiftHours: number;
+  }
 ) {
   // Check if shift is already filled by shift ID
   const currentAssignments = assignments.filter(a => a.shiftId === shift.id && a.date === date);
@@ -1376,6 +1668,10 @@ function assignShift(
 
     // Skip if already assigned today
     if (assignments.some(a => a.employeeId === emp.id && a.date === date)) continue;
+
+    // Respect date-based exclusions even for forced rules (vacation and time-off)
+    const exclusionCheck = checkExclusions(emp, date);
+    if (!exclusionCheck.allowed) continue;
 
     // Skip if excluded (exclude takes priority over assign) - must match day
     const isExcluded = overrides.some(o =>
@@ -1455,9 +1751,39 @@ function assignShift(
     }
 
     // Check minimum shift duration for servers
-    const minDurationCheck = checkMinimumShiftDuration(emp, shift.startTime, shift.endTime);
+    const minDurationCheck = checkMinimumShiftDuration(
+      emp,
+      shift.startTime,
+      shift.endTime,
+      schedulerConfig.minShiftHours,
+      schedulerConfig.bartendingThreshold
+    );
     if (!minDurationCheck.allowed) {
       console.log(`Min duration blocked: ${minDurationCheck.reason}`);
+      return false;
+    }
+
+    // Solo work constraint (derived from staffing slot overlap)
+    if (shift.requiresSolo && emp.aloneScale < schedulerConfig.aloneThreshold) {
+      return false;
+    }
+
+    // Explicit bartender-required roles (label contains "bar")
+    if (shift.requiresBartender && !isBartenderQualified({ employee: emp, bartendingThreshold: schedulerConfig.bartendingThreshold })) {
+      return false;
+    }
+
+    // Minimum rest between shifts across days
+    const restOk = isMinRestSatisfiedForCandidate({
+      weekStart,
+      employeeId: emp.id,
+      candidateDate: date,
+      candidateStartTime: shift.startTime,
+      candidateEndTime: shift.endTime,
+      minRestHours: schedulerConfig.minRestBetweenShiftsHours,
+      existingAssignments: assignments,
+    });
+    if (!restOk) {
       return false;
     }
 
@@ -1489,8 +1815,34 @@ function assignShift(
     const shiftEndMins = timeToMinutes(shift.endTime);
 
     const shiftMatch = dayAvail.shifts.some(s => {
-      // Check shift type matches
-      if (s.type !== 'any' && s.type !== shift.type) return false;
+      // Check shift type matches.
+      // "bar" availability means the employee can work Bar-labeled slots, typically a 4:00pm start.
+      const matchesType = (() => {
+        const hasBarAvailability = dayAvail.shifts.some(x => x.type === 'bar');
+        // Determine whether this shift is truly a Bar slot.
+        // IMPORTANT: do NOT infer Bar from shift id text, because slot ids are user-defined and may contain "bar"
+        // even when the label is Dinner. The canonical source is the staffing slot label, which sets requiresBartender.
+        const isBarSlot = Boolean(shift.requiresBartender) || labelImpliesBartender(shift.name || '');
+
+        if (s.type === 'any') return true;
+
+        if (s.type === 'bar') {
+          // Only match explicit Bar slots, not generic night shifts.
+          if (!isBarSlot) return false;
+          if (shift.type !== 'night') return false;
+          return true;
+        }
+
+        // If an employee has Bar Shift availability for this day, do not allow the generic "night" availability
+        // to match non-Bar night slots (this prevents Bar people getting placed into Dinner by accident).
+        if (s.type === 'night' && hasBarAvailability && shift.type === 'night' && !isBarSlot) {
+          return false;
+        }
+
+        return s.type === shift.type;
+      })();
+
+      if (!matchesType) return false;
 
       // Check time constraints if specified
       if (s.startTime) {
@@ -1563,7 +1915,24 @@ function assignShift(
 
     if (aPrefers !== bPrefers) return bPrefers - aPrefers;
 
-    // 5. Fewer hours worked (balance workload)
+    // 5. Role fit (skills): bartender and solo preferences
+    if (shift.requiresBartender) {
+      const aIsBar = employeeHasRole(a, 'bar') ? 1 : 0;
+      const bIsBar = employeeHasRole(b, 'bar') ? 1 : 0;
+      if (aIsBar !== bIsBar) return bIsBar - aIsBar;
+      if (a.bartendingScale !== b.bartendingScale) return b.bartendingScale - a.bartendingScale;
+    }
+    if (shift.requiresSolo) {
+      if (a.aloneScale !== b.aloneScale) return b.aloneScale - a.aloneScale;
+    }
+    if (shift.type === 'night') {
+      if (a.bartendingScale !== b.bartendingScale) return b.bartendingScale - a.bartendingScale;
+    }
+    if (shift.type === 'morning') {
+      if (a.aloneScale !== b.aloneScale) return b.aloneScale - a.aloneScale;
+    }
+
+    // 6. Fewer hours worked (balance workload)
     return (employeeHours[a.id] || 0) - (employeeHours[b.id] || 0);
   });
 
@@ -1602,9 +1971,9 @@ export function scheduleToGrid(schedule: WeeklySchedule, employees: Employee[]):
     if (!emp) continue;
 
     const day = assignment.shiftId.split('-')[0];
-    let type = 'morning';
-    if (assignment.shiftId.includes('night')) type = 'night';
-    else if (assignment.shiftId.includes('mid')) type = 'mid';
+    let type: 'morning' | 'mid' | 'night' = 'morning';
+    const bucket = getShiftBucketFromStartTime(assignment.startTime);
+    type = bucket;
 
     const dayMap: Record<string, string> = {
       tue: 'tuesday',

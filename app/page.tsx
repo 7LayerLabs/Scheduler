@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { generateSchedule } from '@/lib/scheduler';
 import { parseScheduleNotes } from '@/lib/parseNotes';
 import { employees as initialEmployees } from '@/lib/employees';
-import { Employee, WeeklySchedule, ScheduleOverride, LockedShift, WeeklyStaffingNeeds } from '@/lib/types';
+import { Employee, WeeklySchedule, ScheduleOverride, LockedShift, WeeklyStaffingNeeds, SchedulerOptions } from '@/lib/types';
 import {
   db,
   useCurrentUser,
@@ -29,6 +29,7 @@ import {
   updateUserProfilePic,
   saveSchedule,
 } from '@/lib/instantdb';
+import { RECOMMENDED_WEEKLY_STAFFING_NEEDS } from '@/lib/staffingPresets';
 import Sidebar from '@/components/Sidebar';
 import ScheduleView from '@/components/ScheduleView';
 import ScheduleHistory from '@/components/ScheduleHistory';
@@ -38,6 +39,9 @@ import SettingsView, { AppSettings, DEFAULT_SETTINGS } from '@/components/Settin
 import LoginPage from '@/components/LoginPage';
 import StaffDashboard from '@/components/StaffDashboard';
 import UserManagement from '@/components/UserManagement';
+import ScheduleDiscussionView from '@/components/ScheduleDiscussionView';
+import { deleteDraftScheduleForWeek, useDraftScheduleForWeek, upsertDraftScheduleForWeek } from '@/lib/draftSchedules';
+import { usePublishedScheduleForWeek, upsertPublishedScheduleForWeek } from '@/lib/publishedSchedules';
 
 export default function Home() {
   // Auth state
@@ -63,12 +67,87 @@ export default function Home() {
     const diff = today.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(today.setDate(diff));
   });
-  const [schedule, setSchedule] = useState<WeeklySchedule | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
   // Get week key for storage
   const getWeekKey = (date: Date) => date.toISOString().split('T')[0];
   const currentWeekKey = getWeekKey(weekStart);
+
+  // Store generated schedules per-week so navigating weeks does not wipe them out
+  const [scheduleByWeekKey, setScheduleByWeekKey] = useState<Record<string, WeeklySchedule | null>>({});
+  const schedule = scheduleByWeekKey[currentWeekKey] ?? null;
+
+  // Draft schedule persistence (shared between managers)
+  const { record: draftScheduleRecord, schedule: draftScheduleForWeek } = useDraftScheduleForWeek(currentWeekKey);
+
+  // Published schedule (staff can read this)
+  const { schedule: publishedScheduleForWeek } = usePublishedScheduleForWeek(currentWeekKey);
+
+  // Avoid re-saving identical drafts on load
+  const lastSavedDraftAssignmentsRef = useRef<Record<string, string>>({});
+
+  useEffect(() => {
+    if (draftScheduleRecord?.assignments) {
+      lastSavedDraftAssignmentsRef.current[currentWeekKey] = draftScheduleRecord.assignments;
+    }
+  }, [draftScheduleRecord?.assignments, currentWeekKey]);
+
+  // Load draft schedule into local state when local is empty
+  useEffect(() => {
+    if (!draftScheduleForWeek) return;
+    const existingLocal = scheduleByWeekKeyRef.current[currentWeekKey] ?? null;
+    if (existingLocal) return;
+    setScheduleByWeekKey(prev => ({ ...prev, [currentWeekKey]: draftScheduleForWeek }));
+  }, [draftScheduleForWeek, currentWeekKey]);
+
+  // Persist current week's schedule as a draft (debounced)
+  useEffect(() => {
+    if (!authUser?.email) return;
+    if (!schedule) return;
+
+    const assignmentsJson = JSON.stringify(schedule.assignments);
+    if (lastSavedDraftAssignmentsRef.current[currentWeekKey] === assignmentsJson) return;
+
+    const handle = window.setTimeout(() => {
+      void upsertDraftScheduleForWeek({
+        weekKey: currentWeekKey,
+        weekStart: weekStart.toISOString(),
+        assignments: assignmentsJson,
+        updatedBy: authUser.email || 'Unknown',
+      }).catch((e) => {
+        console.error('Failed to save draft schedule:', e);
+      });
+
+      lastSavedDraftAssignmentsRef.current[currentWeekKey] = assignmentsJson;
+    }, 600);
+
+    return () => window.clearTimeout(handle);
+  }, [authUser?.email, schedule, currentWeekKey, weekStart]);
+
+  // Refs to avoid stale reads when the user clears and immediately regenerates.
+  const scheduleByWeekKeyRef = useRef<Record<string, WeeklySchedule | null>>(scheduleByWeekKey);
+  useEffect(() => {
+    scheduleByWeekKeyRef.current = scheduleByWeekKey;
+  }, [scheduleByWeekKey]);
+
+  const setScheduleForCurrentWeek = (newSchedule: WeeklySchedule | null) => {
+    scheduleByWeekKeyRef.current = { ...scheduleByWeekKeyRef.current, [currentWeekKey]: newSchedule };
+    setScheduleByWeekKey(prev => ({ ...prev, [currentWeekKey]: newSchedule }));
+  };
+
+  // Locked shifts are week-specific in the schedule editor
+  const [lockedShiftsByWeekKey, setLockedShiftsByWeekKey] = useState<Record<string, LockedShift[]>>({});
+  const lockedShifts = lockedShiftsByWeekKey[currentWeekKey] || [];
+
+  const lockedShiftsByWeekKeyRef = useRef<Record<string, LockedShift[]>>(lockedShiftsByWeekKey);
+  useEffect(() => {
+    lockedShiftsByWeekKeyRef.current = lockedShiftsByWeekKey;
+  }, [lockedShiftsByWeekKey]);
+
+  const setLockedShiftsForCurrentWeek = (newLockedShifts: LockedShift[]) => {
+    lockedShiftsByWeekKeyRef.current = { ...lockedShiftsByWeekKeyRef.current, [currentWeekKey]: newLockedShifts };
+    setLockedShiftsByWeekKey(prev => ({ ...prev, [currentWeekKey]: newLockedShifts }));
+  };
 
   // Employees from InstantDB (with fallback to initial employees for migration)
   const employees = dbEmployees.length > 0 ? dbEmployees : initialEmployees;
@@ -119,7 +198,6 @@ export default function Home() {
     await updateWeeklyRulesForWeek(currentWeekKey, weekLockedRules, display);
   };
 
-  const [lockedShifts, setLockedShifts] = useState<LockedShift[]>([]);
   const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -283,59 +361,7 @@ export default function Home() {
     }
   }, [userProfile, isFirstUser, authUser?.email, isCreatingProfile]);
 
-  const DEFAULT_STAFFING_NEEDS: WeeklyStaffingNeeds = {
-    tuesday: {
-      slots: [
-        { id: 'tue-1', startTime: '07:15', endTime: '14:00', label: 'Opener' },
-        { id: 'tue-2', startTime: '11:00', endTime: '16:00', label: '2nd Server' },
-        { id: 'tue-3', startTime: '16:00', endTime: '21:00', label: 'Closer' },
-      ],
-      notes: ''
-    },
-    wednesday: {
-      slots: [
-        { id: 'wed-1', startTime: '07:15', endTime: '14:00', label: 'Opener' },
-        { id: 'wed-2', startTime: '11:00', endTime: '16:00', label: '2nd Server' },
-        { id: 'wed-3', startTime: '16:00', endTime: '21:00', label: 'Closer' },
-      ],
-      notes: ''
-    },
-    thursday: {
-      slots: [
-        { id: 'thu-1', startTime: '07:15', endTime: '14:00', label: 'Opener' },
-        { id: 'thu-2', startTime: '11:00', endTime: '16:00', label: '2nd Server' },
-        { id: 'thu-3', startTime: '16:00', endTime: '21:00', label: 'Closer' },
-      ],
-      notes: ''
-    },
-    friday: {
-      slots: [
-        { id: 'fri-1', startTime: '07:15', endTime: '14:00', label: 'Opener' },
-        { id: 'fri-2', startTime: '11:00', endTime: '16:00', label: '2nd Server' },
-        { id: 'fri-3', startTime: '15:00', endTime: '21:00', label: 'Dinner 1' },
-        { id: 'fri-4', startTime: '17:00', endTime: '21:00', label: 'Dinner 2' },
-      ],
-      notes: ''
-    },
-    saturday: {
-      slots: [
-        { id: 'sat-1', startTime: '07:15', endTime: '15:00', label: 'Opener' },
-        { id: 'sat-2', startTime: '10:00', endTime: '15:00', label: '2nd Server' },
-        { id: 'sat-3', startTime: '15:00', endTime: '21:00', label: 'Dinner 1' },
-        { id: 'sat-4', startTime: '16:00', endTime: '21:00', label: 'Dinner 2' },
-        { id: 'sat-5', startTime: '17:00', endTime: '21:00', label: 'Dinner 3' },
-      ],
-      notes: ''
-    },
-    sunday: {
-      slots: [
-        { id: 'sun-1', startTime: '07:15', endTime: '14:30', label: 'Opener' },
-        { id: 'sun-2', startTime: '08:00', endTime: '14:30', label: '2nd Server' },
-        { id: 'sun-3', startTime: '09:00', endTime: '14:30', label: '3rd Server' },
-      ],
-      notes: ''
-    },
-  };
+  const DEFAULT_STAFFING_NEEDS: WeeklyStaffingNeeds = RECOMMENDED_WEEKLY_STAFFING_NEEDS;
 
   // Staffing needs from InstantDB
   const defaultStaffingTemplate = dbDefaultTemplate || DEFAULT_STAFFING_NEEDS;
@@ -396,15 +422,27 @@ export default function Home() {
 
   const handleRemoveEmployee = async (employeeId: string) => {
     await deleteEmployee(employeeId);
-    // Also remove any locked shifts for this employee
-    setLockedShifts(prev => prev.filter(lock => lock.employeeId !== employeeId));
+    // Also remove any locked shifts for this employee across all weeks
+    setLockedShiftsByWeekKey(prev => {
+      const next: Record<string, LockedShift[]> = {};
+      for (const [weekKey, weekLocked] of Object.entries(prev)) {
+        next[weekKey] = weekLocked.filter(lock => lock.employeeId !== employeeId);
+      }
+      return next;
+    });
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = (notesTextOverride?: string) => {
+    const generatingWeekKey = currentWeekKey;
+    const generatingWeekStart = new Date(weekStart);
+
     setIsGenerating(true);
     setTimeout(() => {
+      const lockedShiftsForWeek = lockedShiftsByWeekKeyRef.current[generatingWeekKey] || [];
+      const existingScheduleForWeek = scheduleByWeekKeyRef.current[generatingWeekKey] ?? null;
+
       // Convert locked shifts to overrides for the scheduler
-      const lockedOverrides: ScheduleOverride[] = lockedShifts.map(lock => ({
+      const lockedOverrides: ScheduleOverride[] = lockedShiftsForWeek.map(lock => ({
         id: `locked-${lock.employeeId}-${lock.day}-${lock.shiftType}`,
         type: 'assign' as const,
         employeeId: lock.employeeId,
@@ -414,7 +452,8 @@ export default function Home() {
       }));
 
       // Parse notes automatically (for CLOSED days, early close, etc.)
-      const notesOverrides = notes.trim() ? parseScheduleNotes(notes, employees) : [];
+      const notesTextForGeneration = typeof notesTextOverride === 'string' ? notesTextOverride : notes;
+      const notesOverrides = notesTextForGeneration.trim() ? parseScheduleNotes(notesTextForGeneration, employees) : [];
 
       // Combine ALL rule sources:
       // 1. permanentRules - apply to ALL weeks (from Notes & Staffing)
@@ -429,13 +468,31 @@ export default function Home() {
         notesOverrides: notesOverrides.length,
         lockedOverrides: lockedOverrides.length,
         totalOverrides: allOverrides.length,
-        notesText: notes
+        notesText: notesTextForGeneration
       });
 
       // Pass locked shifts and existing assignments so they persist through regeneration
-      const existingAssignments = schedule?.assignments || [];
-      const newSchedule = generateSchedule(weekStart, allOverrides, employees, staffingNeeds, lockedShifts, existingAssignments);
-      setSchedule(newSchedule);
+      const existingAssignments = existingScheduleForWeek?.assignments || [];
+
+      const schedulerOptions: SchedulerOptions = {
+        businessHours: appSettings.businessHours as any,
+        overtimeThresholdHours: appSettings.overtimeThreshold,
+        minRestBetweenShiftsHours: appSettings.minRestBetweenShifts,
+        bartendingThreshold: appSettings.bartendingThreshold,
+        aloneThreshold: appSettings.aloneThreshold,
+        minShiftHours: appSettings.minShiftHours,
+      };
+
+      const newSchedule = generateSchedule(
+        generatingWeekStart,
+        allOverrides,
+        employees,
+        staffingNeeds,
+        lockedShiftsForWeek,
+        existingAssignments,
+        schedulerOptions
+      );
+      setScheduleByWeekKey(prev => ({ ...prev, [generatingWeekKey]: newSchedule }));
       setIsGenerating(false);
     }, 500);
   };
@@ -451,7 +508,6 @@ export default function Home() {
     const newDate = new Date(weekStart);
     newDate.setDate(newDate.getDate() + delta * 7);
     setWeekStart(newDate);
-    setSchedule(null);
   };
 
   // Calculate stats
@@ -475,8 +531,11 @@ export default function Home() {
   }, [schedule]);
 
   const handleClearSchedule = () => {
-    setSchedule(null);
-    setLockedShifts([]);
+    scheduleByWeekKeyRef.current = { ...scheduleByWeekKeyRef.current, [currentWeekKey]: null };
+    lockedShiftsByWeekKeyRef.current = { ...lockedShiftsByWeekKeyRef.current, [currentWeekKey]: [] };
+    setScheduleByWeekKey(prev => ({ ...prev, [currentWeekKey]: null }));
+    setLockedShiftsByWeekKey(prev => ({ ...prev, [currentWeekKey]: [] }));
+    void deleteDraftScheduleForWeek(currentWeekKey).catch((e) => console.error('Failed to delete draft schedule:', e));
   };
 
   const handleSignOut = async () => {
@@ -499,17 +558,36 @@ export default function Home() {
     }
   };
 
+  const handlePublishSchedule = async () => {
+    if (!schedule || !authUser) return;
+    try {
+      await upsertPublishedScheduleForWeek({
+        weekKey: currentWeekKey,
+        weekStart: weekStart.toISOString(),
+        assignments: JSON.stringify(schedule.assignments),
+        publishedBy: authUser.email || 'Unknown',
+      });
+      alert('Schedule published successfully!');
+    } catch (error) {
+      console.error('Failed to publish schedule:', error);
+      alert('Failed to publish schedule.');
+    }
+  };
+
   const handleRestoreSchedule = (archivedSchedule: WeeklySchedule) => {
     // 1. Set the week to match the archive
-    setWeekStart(new Date(archivedSchedule.weekStart));
+    const restoredWeekStart = new Date(archivedSchedule.weekStart);
+    const restoredWeekKey = getWeekKey(restoredWeekStart);
+    setWeekStart(restoredWeekStart);
 
     // 2. Set the schedule data
-    setSchedule({
-      weekStart: new Date(archivedSchedule.weekStart),
+    const restored: WeeklySchedule = {
+      weekStart: restoredWeekStart,
       assignments: archivedSchedule.assignments,
       conflicts: [], // We don't store these, will need to re-calc if needed or kept empty
       warnings: []
-    });
+    };
+    setScheduleByWeekKey(prev => ({ ...prev, [restoredWeekKey]: restored }));
 
     // 3. Switch to Schedule view
     setActiveTab('schedule');
@@ -600,7 +678,7 @@ export default function Home() {
       <StaffDashboard
         user={currentUser}
         employees={employees}
-        schedule={schedule}
+        schedule={publishedScheduleForWeek || schedule}
         weekStart={weekStart}
         formatWeekRange={formatWeekRange}
         changeWeek={changeWeek}
@@ -755,14 +833,14 @@ export default function Home() {
               changeWeek={changeWeek}
               formatWeekRange={formatWeekRange}
               schedule={schedule}
-              setSchedule={setSchedule}
+              setSchedule={setScheduleForCurrentWeek}
               handleGenerate={handleGenerate}
               onClearSchedule={handleClearSchedule}
               isGenerating={isGenerating}
               employees={employees}
               stats={stats}
               lockedShifts={lockedShifts}
-              setLockedShifts={setLockedShifts}
+              setLockedShifts={setLockedShiftsForCurrentWeek}
               notes={notes}
               setNotes={setNotes}
               overrides={[...permanentRules, ...weekLockedRules]}
@@ -776,6 +854,19 @@ export default function Home() {
               permanentRulesDisplay={permanentRulesDisplay}
               setPermanentRulesDisplay={setPermanentRulesDisplay}
               onArchiveSchedule={handleArchiveSchedule}
+              onPublishSchedule={handlePublishSchedule}
+            />
+          )}
+
+          {activeTab === 'discussion' && (
+            <ScheduleDiscussionView
+              currentUser={currentUser}
+              weekStart={weekStart}
+              weekKey={currentWeekKey}
+              formatWeekRange={formatWeekRange}
+              changeWeek={changeWeek}
+              schedule={schedule}
+              onGoToSchedule={() => setActiveTab('schedule')}
             />
           )}
 

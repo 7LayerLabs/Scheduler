@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { WeeklyStaffingNeeds, StaffingSlot } from '@/lib/types';
+import { WeeklyStaffingNeeds, StaffingSlot, DayOfWeek } from '@/lib/types';
+import { normalizeStaffingSlotLabel } from '@/lib/scheduling/labels';
 
 interface Props {
   weekStart: Date;
@@ -67,11 +68,19 @@ export default function StaffingView({
     const newNeeds = { ...staffingNeeds };
     const dayData = newNeeds[day];
     const slots = dayData.slots || [];
+    const defaultLabels = [
+      day === 'saturday' || day === 'sunday' ? 'Weekend Opener' : 'Opener',
+      '2nd Server',
+      'Mid Shift',
+      'Bar',
+      '3rd Server',
+      'Closer',
+    ];
     const newSlot: StaffingSlot = {
       id: `${day}-${Date.now()}`,
       startTime: '09:00',
       endTime: '17:00',
-      label: `Server ${slots.length + 1}`
+      label: defaultLabels[slots.length] || `Server ${slots.length + 1}`
     };
     newNeeds[day] = { ...dayData, slots: [...slots, newSlot] };
     setStaffingNeeds(newNeeds);
@@ -185,6 +194,22 @@ export default function StaffingView({
                       placeholder="Label"
                       className="flex-1 px-2 py-1 text-sm bg-[#0d0d0f] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825] placeholder:text-[#6b6b75]"
                     />
+
+                    <select
+                      value={normalizeStaffingSlotLabel({ label: slot.label, day: key as DayOfWeek, startTime: slot.startTime, endTime: slot.endTime })}
+                      onChange={(e) => updateSlot(key, slot.id, 'label', e.target.value)}
+                      className="px-2 py-1 text-xs bg-[#0d0d0f] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
+                      title="Quick label preset"
+                    >
+                      <option value="Opener">Opener</option>
+                      {(key === 'saturday' || key === 'sunday') && <option value="Weekend Opener">Weekend Opener</option>}
+                      <option value="2nd Server">2nd Server</option>
+                      <option value="3rd Server">3rd Server</option>
+                      <option value="Mid Shift">Mid Shift</option>
+                      <option value="Bar">Bar</option>
+                      <option value="Closer">Closer</option>
+                      <option value="Dinner">Dinner</option>
+                    </select>
 
                     {/* Start Time */}
                     <input
