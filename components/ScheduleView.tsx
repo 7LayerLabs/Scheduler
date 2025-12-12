@@ -1115,12 +1115,12 @@ function ScheduleGrid({
                           const locked = isLocked(emp.id, dayFull, shiftType);
                           const isDragging = draggedItem?.employeeId === emp.id && draggedItem?.day === dayFull;
 
-                          // Colors: morning = orange, mid = green, night/dinner = red
+                          // Colors: morning = orange, mid = green, night/dinner = red (brightened)
                           const shiftColorClass = shiftTypeByTime === 'night'
-                            ? 'bg-[#ef4444]/20 text-[#ef4444] border border-[#ef4444]/30' // red for dinner
+                            ? 'bg-[#f87171]/30 text-[#fca5a5] border border-[#f87171]/50' // bright coral/red for dinner
                             : shiftTypeByTime === 'mid'
-                              ? 'bg-[#22c55e]/20 text-[#22c55e] border border-[#22c55e]/30' // green for mid
-                              : 'bg-[#f97316]/20 text-[#f97316] border border-[#f97316]/30'; // orange for morning
+                              ? 'bg-[#4ade80]/30 text-[#86efac] border border-[#4ade80]/50' // bright green for mid
+                              : 'bg-[#fb923c]/30 text-[#fdba74] border border-[#fb923c]/50'; // bright orange for morning
 
                           return (
                             <div
