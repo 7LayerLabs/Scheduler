@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { Employee, WeeklySchedule, LockedShift, DayOfWeek, ScheduleOverride, WeeklyStaffingNeeds } from '@/lib/types';
 import { parseScheduleNotes, formatParsedOverrides } from '@/lib/parseNotes';
-import { getMorningOrNightFromStartTime } from '@/lib/shiftBuckets';
+import { getShiftBucketFromStartTime } from '@/lib/shiftBuckets';
 import DefaultShiftsSidebar from '@/components/DefaultShiftsSidebar';
 import { normalizeStaffingSlotLabel } from '@/lib/scheduling/labels';
 import {
@@ -898,7 +898,7 @@ function ScheduleGrid({
   schedule: WeeklySchedule;
   weekStart: Date;
   lockedShifts: LockedShift[];
-  onToggleLock: (employeeId: string, day: DayOfWeek, shiftType: 'morning' | 'night') => void;
+  onToggleLock: (employeeId: string, day: DayOfWeek, shiftType: 'morning' | 'mid' | 'night') => void;
   employees: Employee[];
   staffingNeeds: WeeklyStaffingNeeds;
   overrides: ScheduleOverride[];
@@ -911,7 +911,7 @@ function ScheduleGrid({
   const [draggedItem, setDraggedItem] = useState<{
     employeeId: string;
     day: DayOfWeek;
-    shiftType: 'morning' | 'night';
+    shiftType: 'morning' | 'mid' | 'night';
     assignmentIndex: number;
     shiftId: string;
     startTime?: string;
@@ -1007,11 +1007,11 @@ function ScheduleGrid({
     return null;
   };
 
-  const getShiftType = (assignmentStartTime?: string): 'morning' | 'night' => {
-    return getMorningOrNightFromStartTime(assignmentStartTime);
+  const getShiftType = (assignmentStartTime?: string): 'morning' | 'mid' | 'night' => {
+    return getShiftBucketFromStartTime(assignmentStartTime);
   };
 
-  const isLocked = (employeeId: string, day: DayOfWeek, shiftType: 'morning' | 'night') => {
+  const isLocked = (employeeId: string, day: DayOfWeek, shiftType: 'morning' | 'mid' | 'night') => {
     return lockedShifts.some(
       l => l.employeeId === employeeId && l.day === day && l.shiftType === shiftType
     );
@@ -1021,7 +1021,7 @@ function ScheduleGrid({
     e: React.DragEvent,
     employeeId: string,
     day: DayOfWeek,
-    shiftType: 'morning' | 'night',
+    shiftType: 'morning' | 'mid' | 'night',
     assignmentIndex: number,
     shiftId: string,
     startTime?: string,
@@ -1244,7 +1244,7 @@ function ScheduleGrid({
       const nextShiftType = getShiftType(draftStartTime);
       const isExistingLocked = isLocked(editingShiftKey.employeeId, editingShiftKey.day, existingShiftType);
       if (isExistingLocked && existingShiftType !== nextShiftType) {
-        setEditError('Unlock this shift before changing it from morning to night or night to morning.');
+        setEditError('Unlock this shift before changing its shift type.');
         return;
       }
 
@@ -1387,7 +1387,7 @@ function ScheduleGrid({
                                     const role = getRoleLabelForAssignment(dayFull, a.shiftId, a.startTime, a.endTime);
                                     const timeText = a.startTime && a.endTime
                                       ? `${formatTime(a.startTime)} - ${formatTime(a.endTime)}`
-                                      : (shiftType === 'night' ? 'Night' : 'Morning');
+                                      : (shiftType === 'night' ? 'Night' : shiftType === 'mid' ? 'Mid' : 'Morning');
 
                                     return (
                                       <>

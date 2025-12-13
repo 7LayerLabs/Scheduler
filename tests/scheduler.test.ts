@@ -144,6 +144,37 @@ test('week notes business rule: "Closed Thursday" creates a closure override wit
   assert.ok(overrides.some(o => o.employeeId === '__ALL__' && o.type === 'exclude' && o.day === 'thursday'));
 });
 
+test('week notes: "lunch/noon" maps to a mid shift type and assigns to the mid slot (not opener)', () => {
+  const ali = makeEmployee({
+    id: 'ali',
+    name: 'Ali',
+    availability: makeAvailability({
+      tuesday: { available: true, shifts: [{ type: 'mid', startTime: '12:00', endTime: '16:00' }] },
+    }),
+  });
+  const opener = makeEmployee({ id: 'opener', name: 'Opener Person' });
+
+  const staffingNeeds = makeStaffingNeeds({
+    tuesday: {
+      slots: [
+        { id: 'tue-open', startTime: '07:15', endTime: '12:00', label: 'Opener' },
+        { id: 'tue-mid', startTime: '12:00', endTime: '16:00', label: 'Mid Shift' },
+      ],
+      notes: '',
+    },
+  });
+
+  const overrides = parseScheduleNotes('Ali Tuesday lunch', [ali, opener]);
+  assert.ok(overrides.some(o => o.employeeId === 'ali' && o.day === 'tuesday' && o.shiftType === 'mid'));
+
+  const schedule = generateSchedule(new Date('2025-12-08T00:00:00'), overrides, [ali, opener], staffingNeeds, [], []);
+
+  const aliAssignment = schedule.assignments.find(a => a.employeeId === 'ali');
+  assert.ok(aliAssignment, 'Expected Ali to be scheduled');
+  assert.equal(aliAssignment.shiftId, 'tue-mid');
+  assert.equal(aliAssignment.startTime, '12:00');
+});
+
 test('fixed shift should remove matching staffing slot (prevents dropping night slot)', () => {
   const fixedEmp: Employee = makeEmployee({
     id: 'fixed',

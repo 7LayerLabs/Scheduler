@@ -34,7 +34,7 @@ export interface ShiftSwapRequest {
   targetEmployeeId: string;
   targetEmployeeName: string;
   shiftDate: string;
-  shiftType: 'morning' | 'night';
+  shiftType: 'morning' | 'mid' | 'night';
   status: 'pending' | 'approved' | 'denied';
   createdAt: number;
   reviewedAt?: number;

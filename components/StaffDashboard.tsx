@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { User, TimeOffRequest, ShiftSwapRequest, useTimeOffRequests, useShiftSwapRequests, createTimeOffRequest, createShiftSwapRequest } from '@/lib/instantdb';
 import { Employee, WeeklySchedule } from '@/lib/types';
-import { getMorningOrNightFromStartTime } from '@/lib/shiftBuckets';
+import { getShiftBucketFromStartTime } from '@/lib/shiftBuckets';
 
 interface Props {
   user: User;
@@ -24,7 +24,7 @@ export default function StaffDashboard({
 }: Props) {
   const [showTimeOffModal, setShowTimeOffModal] = useState(false);
   const [showSwapModal, setShowSwapModal] = useState(false);
-  const [selectedShift, setSelectedShift] = useState<{ date: string; shiftType: 'morning' | 'night' } | null>(null);
+  const [selectedShift, setSelectedShift] = useState<{ date: string; shiftType: 'morning' | 'mid' | 'night' } | null>(null);
 
   // Find the employee linked to this user
   const { requests: timeOffRequests } = useTimeOffRequests(user.employeeId);
@@ -115,7 +115,7 @@ export default function StaffDashboard({
                     onClick={() => {
                       setSelectedShift({
                         date: shift.date,
-                        shiftType: getMorningOrNightFromStartTime(shift.startTime),
+                        shiftType: getShiftBucketFromStartTime(shift.startTime),
                       });
                       setShowSwapModal(true);
                     }}
@@ -350,7 +350,7 @@ function SwapModal({
   requesterId: string;
   requesterName: string;
   shiftDate: string;
-  shiftType: 'morning' | 'night';
+  shiftType: 'morning' | 'mid' | 'night';
   employees: Employee[];
   onClose: () => void;
 }) {

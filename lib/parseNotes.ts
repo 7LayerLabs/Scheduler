@@ -515,14 +515,22 @@ function determineAction(sentence: string): 'assign' | 'exclude' | 'prioritize' 
   return 'assign';
 }
 
-function determineShiftType(sentence: string): 'morning' | 'night' | 'any' {
+function determineShiftType(sentence: string): 'morning' | 'mid' | 'night' | 'any' {
   const lowerSentence = sentence.toLowerCase();
 
   // Morning indicators
-  const morningKeywords = ['morning', 'am', 'open', 'opens', 'opening', 'breakfast', 'lunch', 'early'];
+  const morningKeywords = ['morning', 'am', 'open', 'opens', 'opening', 'breakfast', 'early'];
   for (const keyword of morningKeywords) {
     if (lowerSentence.includes(keyword)) {
       return 'morning';
+    }
+  }
+
+  // Mid indicators (lunch, noon, afternoon)
+  const midKeywords = ['mid', 'midshift', 'mid shift', 'lunch', 'noon', 'afternoon'];
+  for (const keyword of midKeywords) {
+    if (lowerSentence.includes(keyword)) {
+      return 'mid';
     }
   }
 
@@ -562,14 +570,14 @@ export function formatParsedOverrides(overrides: ScheduleOverride[], employeeLis
     // Handle business-wide rules
     if (override.employeeId === '__ALL__') {
       if (override.type === 'exclude') {
-        formatted.push(`🚫 ${dayLabel} - CLOSED`);
+        formatted.push(`${dayLabel} CLOSED`);
       }
       continue;
     }
 
     if (override.employeeId === '__CLOSE_EARLY__') {
       const closeTime = override.customEndTime ? formatTimeDisplay(override.customEndTime) : '';
-      formatted.push(`⏰ ${dayLabel} - Close at ${closeTime}`);
+      formatted.push(`${dayLabel} Close at ${closeTime}`);
       continue;
     }
 
@@ -581,18 +589,18 @@ export function formatParsedOverrides(overrides: ScheduleOverride[], employeeLis
 
     switch (override.type) {
       case 'assign':
-        formatted.push(`✓ ${emp.name} → ${dayLabel}${shiftLabel}`);
+        formatted.push(`${emp.name} ${dayLabel}${shiftLabel}`);
         break;
       case 'exclude':
-        formatted.push(`✗ ${emp.name} OFF ${dayLabel}`);
+        formatted.push(`${emp.name} OFF ${dayLabel}`);
         break;
       case 'prioritize':
-        formatted.push(`★ Prefer ${emp.name} for ${dayLabel}${shiftLabel}`);
+        formatted.push(`Prefer ${emp.name} for ${dayLabel}${shiftLabel}`);
         break;
       case 'custom_time':
         const startStr = override.customStartTime ? formatTimeDisplay(override.customStartTime) : 'open';
         const endStr = override.customEndTime ? formatTimeDisplay(override.customEndTime) : 'close';
-        formatted.push(`⏰ ${emp.name} → ${dayLabel} ${startStr}-${endStr}`);
+        formatted.push(`${emp.name} ${dayLabel} ${startStr}-${endStr}`);
         break;
     }
   }

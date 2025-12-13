@@ -8,6 +8,7 @@ import {
   DayOfWeek,
   DayAvailability,
   ScheduleOverride,
+  LockedShift,
   WeeklyStaffingNeeds,
   PermanentRule,
   SCHEDULING_RULES,
@@ -307,7 +308,7 @@ export function generateSchedule(
   overrides: ScheduleOverride[] = [],
   employees: Employee[] = [],
   staffingNeeds?: WeeklyStaffingNeeds,
-  lockedShifts?: { employeeId: string; day: DayOfWeek; shiftType: 'morning' | 'night' }[],
+  lockedShifts?: LockedShift[],
   existingAssignments?: ScheduleAssignment[],
   options?: SchedulerOptions
 ): WeeklySchedule {
@@ -571,7 +572,7 @@ export function generateSchedule(
       const existingAssignment = existingAssignments.find(a =>
         a.employeeId === lock.employeeId &&
         a.date === lockDateStr &&
-        getMorningOrNightFromStartTime(a.startTime) === lock.shiftType
+        getShiftBucketFromStartTime(a.startTime) === lock.shiftType
       );
 
       if (existingAssignment) {
@@ -1630,10 +1631,9 @@ export function generateSchedule(
           message: `Rule violation: ${emp.name} was NOT scheduled on ${override.day} despite assignment rule`,
         });
       } else if (override.shiftType !== 'any' && override.type === 'assign') {
-        // Check if shift type matches based on actual start time (before 4pm = morning/lunch, 4pm+ = dinner)
+        // Check if shift type matches based on actual start time bucket
         const hasMatchingShift = empAssignments.some(a => {
-          const startHour = a.startTime ? parseInt(a.startTime.split(':')[0]) : 12;
-          const assignmentType = startHour < 16 ? 'morning' : 'night';
+          const assignmentType = getShiftBucketFromStartTime(a.startTime);
           return override.shiftType === assignmentType;
         });
 

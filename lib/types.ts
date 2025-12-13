@@ -14,7 +14,7 @@ export interface Employee {
   availability: Availability;
   setSchedule?: {
     day: DayOfWeek;
-    shiftType: 'morning' | 'night';
+    shiftType: 'morning' | 'mid' | 'night';
     startTime?: string;
     endTime?: string;
   }[];
@@ -155,7 +155,7 @@ export interface ScheduleOverride {
   type: 'assign' | 'exclude' | 'prioritize' | 'custom_time';
   employeeId: string;
   day: DayOfWeek;
-  shiftType: 'morning' | 'night' | 'any';
+  shiftType: 'morning' | 'mid' | 'night' | 'any';
   note?: string;
   // Custom time fields for specific shift times
   customStartTime?: string; // e.g., "10:00"
@@ -181,7 +181,7 @@ export interface ScheduleNotes {
 export interface LockedShift {
   employeeId: string;
   day: DayOfWeek;
-  shiftType: 'morning' | 'night';
+  shiftType: 'morning' | 'mid' | 'night';
 }
 
 // Weekly staffing needs - how many staff needed per day/shift
