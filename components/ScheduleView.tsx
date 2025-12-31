@@ -401,25 +401,35 @@ export default function ScheduleView({
   const safePermanentRules = permanentRules || [];
   const safePermanentRulesDisplay = permanentRulesDisplay || [];
 
-  // Apply rules to this week only
+  // Apply rules to this week only - use combined setter to avoid closure issues
   const handleApplyWeekRules = () => {
-    if (parsedRules.length > 0 && setWeekLockedRules && setWeekLockedRulesDisplay) {
+    if (parsedRules.length > 0) {
       const newRules = [...safeWeekLockedRules, ...parsedRules];
       const newDisplay = [...safeWeekLockedRulesDisplay, ...parsedPreview];
-      setWeekLockedRules(newRules);
-      setWeekLockedRulesDisplay(newDisplay);
+
+      if (setWeekLockedRulesAndDisplay) {
+        setWeekLockedRulesAndDisplay(newRules, newDisplay);
+      } else if (setWeekLockedRules && setWeekLockedRulesDisplay) {
+        setWeekLockedRules(newRules);
+        setWeekLockedRulesDisplay(newDisplay);
+      }
       // Clear input after applying
       clearWeekNotesInput();
     }
   };
 
-  // Apply rules permanently (all weeks - persists after refresh)
+  // Apply rules permanently (all weeks - persists after refresh) - use combined setter to avoid closure issues
   const handleApplyPermanentRules = () => {
-    if (parsedRules.length > 0 && setPermanentRules && setPermanentRulesDisplay) {
+    if (parsedRules.length > 0) {
       const newRules = [...safePermanentRules, ...parsedRules];
       const newDisplay = [...safePermanentRulesDisplay, ...parsedPreview];
-      setPermanentRules(newRules);
-      setPermanentRulesDisplay(newDisplay);
+
+      if (setPermanentRulesAndDisplay) {
+        setPermanentRulesAndDisplay(newRules, newDisplay);
+      } else if (setPermanentRules && setPermanentRulesDisplay) {
+        setPermanentRules(newRules);
+        setPermanentRulesDisplay(newDisplay);
+      }
       // Clear input after applying
       clearWeekNotesInput();
     }
