@@ -840,8 +840,19 @@ export function useWeeklyRules() {
   const displayByWeek: Record<string, string[]> = {};
 
   for (const item of ((data?.weeklyRules || []) as DBWeeklyRules[])) {
-    rulesByWeek[item.weekKey] = JSON.parse(item.rules);
-    displayByWeek[item.weekKey] = JSON.parse(item.rulesDisplay);
+    try {
+      // Parse with fallback for empty/invalid data
+      const rules = item.rules ? JSON.parse(item.rules) : [];
+      const display = item.rulesDisplay ? JSON.parse(item.rulesDisplay) : [];
+
+      rulesByWeek[item.weekKey] = Array.isArray(rules) ? rules : [];
+      displayByWeek[item.weekKey] = Array.isArray(display) ? display : [];
+    } catch (e) {
+      // If parsing fails, initialize as empty
+      console.warn(`Failed to parse rules for ${item.weekKey}:`, e);
+      rulesByWeek[item.weekKey] = [];
+      displayByWeek[item.weekKey] = [];
+    }
   }
 
   return { rulesByWeek, displayByWeek, isLoading, error };
@@ -852,6 +863,8 @@ export async function updateWeeklyRulesForWeek(weekKey: string, rules: ScheduleO
   // Always generate a consistent ID based on weekKey so queries can find it
   const rulesId = `weekly-rules-${weekKey}`;
 
+  console.log(`[Rules] Saving ${rulesDisplay.length} rules for week ${weekKey}`);
+
   await db.transact(
     tx.weeklyRules[rulesId].update({
       weekKey,
@@ -860,6 +873,12 @@ export async function updateWeeklyRulesForWeek(weekKey: string, rules: ScheduleO
       updatedAt: Date.now(),
     })
   );
+
+  // Give InstantDB subscription time to propagate the change
+  // Increased to 200ms for more reliable propagation
+  await new Promise(resolve => setTimeout(resolve, 200));
+
+  console.log(`[Rules] Saved ${rulesDisplay.length} rules for week ${weekKey}`);
 }
 
 // ============================================
