@@ -1,6 +1,6 @@
 
-import { parseScheduleNotes } from './lib/parseNotes';
-import { Employee, DayOfWeek } from './lib/types';
+import { parseScheduleNotes } from '../lib/parseNotes';
+import { Employee, DayOfWeek } from '../lib/types';
 
 const mockDayAvailability = { available: true, shifts: [] };
 const mockAvailability = {

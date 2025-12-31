@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import NotificationBell from './notifications/NotificationBell';
 
 interface SidebarProps {
@@ -46,6 +47,22 @@ function SettingsIcon({ className }: { className?: string }) {
   );
 }
 
+function ChartBarIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 6.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v13.5c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V6.375zm6-2.130c0-.621.504-1.125 1.125-1.125H18a1.125 1.125 0 011.125 1.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.245z" />
+    </svg>
+  );
+}
+
+function TemplateIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0013.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+    </svg>
+  );
+}
+
 function NotesIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -79,6 +96,7 @@ function ChatIcon({ className }: { className?: string }) {
 }
 
 export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager', logoUrl, isOpen = true, onClose }: SidebarProps) {
+  const router = useRouter();
   // Base nav items for all users
   const baseNavItems = [
     { id: 'schedule', label: 'Schedule', icon: CalendarIcon },
@@ -87,11 +105,13 @@ export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager',
 
   // Manager-only items (Users is now inside Settings)
   const managerNavItems = [
+    { id: 'templates', label: 'Templates', icon: TemplateIcon },
+    { id: 'analytics', label: 'Analytics', icon: ChartBarIcon },
     { id: 'settings', label: 'Settings', icon: SettingsIcon },
   ];
 
   // Combine based on role
-  // Manager gets base items + History + Settings
+  // Manager gets base items + Discussion + History + Templates + Analytics + Settings
   const navItems = userRole === 'manager'
     ? [
       ...baseNavItems,
@@ -125,6 +145,23 @@ export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager',
   }, [isOpen]);
 
   const handleNavClick = (tabId: string) => {
+    // Navigate to external pages for templates and analytics
+    if (tabId === 'templates') {
+      router.push('/templates');
+      if (onClose && window.innerWidth < 1024) {
+        onClose();
+      }
+      return;
+    }
+    if (tabId === 'analytics') {
+      router.push('/analytics');
+      if (onClose && window.innerWidth < 1024) {
+        onClose();
+      }
+      return;
+    }
+
+    // For regular tabs, set active tab
     setActiveTab(tabId);
     // Close sidebar on mobile after navigation
     if (onClose && window.innerWidth < 1024) {

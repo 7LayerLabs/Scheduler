@@ -29,10 +29,10 @@ export function validateStaffingNeeds(params: {
   for (const day of days) {
     const openTime = businessOpenTimeByDay?.[day] || '07:15';
     const openMins = timeToMinutes(openTime);
-    const daySlots = staffingNeeds[day]?.slots || [];
+    const daySlots = (staffingNeeds as Record<string, any>)[day]?.slots || [];
 
     // 1) Multiple openers at opening time
-    const openerCandidates = daySlots.filter(s => {
+    const openerCandidates = daySlots.filter((s: any) => {
       const label = normalizeStaffingSlotLabel({ label: s.label, day, startTime: s.startTime, endTime: s.endTime });
       return label.toLowerCase().includes('opener') && timeToMinutes(s.startTime) === openMins;
     });
@@ -45,7 +45,7 @@ export function validateStaffingNeeds(params: {
     }
 
     // 2) Bar starts too early (heuristic: before noon)
-    const barTooEarly = daySlots.find(s => {
+    const barTooEarly = daySlots.find((s: any) => {
       const label = normalizeStaffingSlotLabel({ label: s.label, day, startTime: s.startTime, endTime: s.endTime });
       return labelImpliesBartender(label) && timeToMinutes(s.startTime) < 12 * 60;
     });
@@ -60,8 +60,8 @@ export function validateStaffingNeeds(params: {
     // 3) Weekday opener ends too late (heuristic based on your requirement: by 12:00)
     if (day === 'tuesday' || day === 'wednesday' || day === 'thursday' || day === 'friday') {
       const opener = daySlots
-        .map(s => ({ slot: s, label: normalizeStaffingSlotLabel({ label: s.label, day, startTime: s.startTime, endTime: s.endTime }) }))
-        .find(x => x.label === 'Opener' && timeToMinutes(x.slot.startTime) === openMins);
+        .map((s: any) => ({ slot: s, label: normalizeStaffingSlotLabel({ label: s.label, day, startTime: s.startTime, endTime: s.endTime }) }))
+        .find((x: any) => x.label === 'Opener' && timeToMinutes(x.slot.startTime) === openMins);
 
       if (opener && timeToMinutes(opener.slot.endTime) > 12 * 60) {
         issues.push({

@@ -51,12 +51,12 @@ export default function AvailabilityEditor({ availability, onUpdateAvailability 
         if (shiftType === 'bar') {
           newShifts = [...withoutAny, { type: 'bar' as const }];
         } else {
-          newShifts = [...withoutAny, { type: shiftType as const }];
+          newShifts = [...withoutAny, { type: shiftType as ShiftType }];
         }
       }
     }
 
-    newAvail[day] = { ...currentDayAvail, available: newShifts.length > 0, shifts: newShifts };
+    newAvail[day] = { ...currentDayAvail, available: newShifts.length > 0, shifts: newShifts as any };
     onUpdateAvailability(newAvail);
   };
 

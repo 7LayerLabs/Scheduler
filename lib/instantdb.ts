@@ -526,7 +526,7 @@ export async function deleteScheduleTemplate(templateId: string) {
 
 export async function incrementTemplateUsage(templateId: string) {
   await db.transact(tx.scheduleTemplates[templateId].update({
-    usageCount: (doc) => (doc.usageCount || 0) + 1,
+    usageCount: (doc: any) => (doc.usageCount || 0) + 1,
     lastUsedAt: Date.now(),
   }));
 }

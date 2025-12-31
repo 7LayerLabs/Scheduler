@@ -559,7 +559,7 @@ export default function SettingsView({ settings, onUpdateSettings, onExportSched
           {/* Business Settings */}
           <BusinessSettingsCard
             restaurantName={localSettings.restaurantName}
-            logoUrl={logoUrl}
+            logoUrl={logoUrl ?? null}
             onUpdateName={(name) => updateSetting('restaurantName', name)}
             onLogoChange={onLogoChange || (() => {})}
           />

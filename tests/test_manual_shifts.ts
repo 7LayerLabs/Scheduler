@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { pickShiftIdForManualAssignment } from './lib/manualShifts';
-import type { DayOfWeek, ScheduleAssignment, WeeklyStaffingNeeds } from './lib/types';
+import { pickShiftIdForManualAssignment } from '../lib/manualShifts';
+import type { DayOfWeek, ScheduleAssignment, WeeklyStaffingNeeds } from '../lib/types';
 
 function run() {
   const staffingNeeds: WeeklyStaffingNeeds = {

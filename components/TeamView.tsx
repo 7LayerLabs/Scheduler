@@ -5,6 +5,7 @@ import { Employee, Availability, DayAvailability, EmployeeRestriction, Permanent
 import EmployeeRoleToggle from '@/components/EmployeeRoleToggle';
 import EmployeeListItem from '@/components/team/EmployeeListItem';
 import EmployeeEditForm from '@/components/team/EmployeeEditForm';
+import PreferencePanel from '@/components/analytics/PreferencePanel';
 
 interface Props {
   employees: Employee[];
@@ -479,6 +480,16 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                       </span>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* Shift Pattern Analysis - Phase 3 */}
+              {!isEditing && (
+                <div className="mb-6">
+                  <PreferencePanel
+                    employeeId={selectedEmployee.id}
+                    employeeName={selectedEmployee.name}
+                  />
                 </div>
               )}
 

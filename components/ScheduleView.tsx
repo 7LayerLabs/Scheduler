@@ -21,6 +21,7 @@ import StatsPanel from '@/components/schedule/StatsPanel';
 import WeekNotesPanel from '@/components/schedule/WeekNotesPanel';
 import IssuesWarningsPanel from '@/components/schedule/IssuesWarningsPanel';
 import ClearScheduleButton from '@/components/schedule/ClearScheduleButton';
+import SaveTemplateButton from '@/components/templates/SaveTemplateButton';
 
 interface Props {
   weekStart: Date;
@@ -458,6 +459,9 @@ export default function ScheduleView({
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           {schedule && (
             <ClearScheduleButton onClearSchedule={onClearSchedule} />
+          )}
+          {schedule && (
+            <SaveTemplateButton hasSchedule={!!schedule} assignments={schedule.assignments} />
           )}
           {schedule && (
             <button
@@ -1282,6 +1286,14 @@ function PencilIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 3.487a2.25 2.25 0 013.182 3.182L7.5 19.213 3 20.25l1.037-4.5L16.862 3.487z" />
+    </svg>
+  );
+}
+
+function XIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
     </svg>
   );
 }

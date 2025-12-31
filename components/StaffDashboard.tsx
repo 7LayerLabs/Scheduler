@@ -235,11 +235,12 @@ export default function StaffDashboard({
 }
 
 // Status Badge Component
-function StatusBadge({ status }: { status: 'pending' | 'approved' | 'denied' }) {
+function StatusBadge({ status }: { status: 'pending' | 'approved' | 'denied' | 'cancelled' }) {
   const styles = {
     pending: 'bg-[#e5a825]/10 text-[#e5a825] border-[#e5a825]/30',
     approved: 'bg-[#22c55e]/10 text-[#22c55e] border-[#22c55e]/30',
     denied: 'bg-[#ef4444]/10 text-[#ef4444] border-[#ef4444]/30',
+    cancelled: 'bg-[#6b6b75]/10 text-[#6b6b75] border-[#6b6b75]/30',
   };
 
   return (
