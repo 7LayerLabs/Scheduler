@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import NotificationBell from './notifications/NotificationBell';
 
 interface SidebarProps {
   activeTab: string;
@@ -153,9 +154,9 @@ export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager',
       >
         {/* Logo */}
         <div className="p-4 sm:p-6 border-b border-[#2a2a32]">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 sm:w-11 sm:h-11 bg-[#e5a825] rounded-xl flex items-center justify-center shadow-lg shadow-[#e5a825]/20 transform hover:scale-105 transition-transform overflow-hidden">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div className="w-10 h-10 sm:w-11 sm:h-11 bg-[#e5a825] rounded-xl flex items-center justify-center shadow-lg shadow-[#e5a825]/20 transform hover:scale-105 transition-transform overflow-hidden flex-shrink-0">
                 {logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
@@ -163,18 +164,22 @@ export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager',
                   <span className="text-[#0d0d0f] font-bold text-lg sm:text-xl">T</span>
                 )}
               </div>
-              <div>
-                <h1 className="font-bold text-white text-base sm:text-lg tracking-tight">Tempo</h1>
-                <p className="text-xs text-[#6b6b75] font-medium">Staff Scheduler</p>
+              <div className="min-w-0">
+                <h1 className="font-bold text-white text-base sm:text-lg tracking-tight truncate">Tempo</h1>
+                <p className="text-xs text-[#6b6b75] font-medium truncate">Staff Scheduler</p>
               </div>
             </div>
-            {/* Mobile close button */}
-            <button
-              onClick={onClose}
-              className="lg:hidden p-2 text-[#6b6b75] hover:text-white hover:bg-[#1a1a1f] rounded-lg transition-colors"
-            >
-              <CloseIcon className="w-5 h-5" />
-            </button>
+            {/* Right side buttons */}
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <NotificationBell />
+              {/* Mobile close button */}
+              <button
+                onClick={onClose}
+                className="lg:hidden p-2 text-[#6b6b75] hover:text-white hover:bg-[#1a1a1f] rounded-lg transition-colors"
+              >
+                <CloseIcon className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         </div>
 

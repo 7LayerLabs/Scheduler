@@ -41,6 +41,20 @@ export interface ShiftSwapRequest {
   reviewedBy?: string;
 }
 
+export interface Notification {
+  id: string;
+  userId: string; // Target user
+  userRole: 'manager' | 'staff';
+  type: 'schedule_published' | 'swap_requested' | 'swap_approved' | 'swap_denied' | 'template_applied' | 'system';
+  title: string; // "New Schedule Published"
+  message: string; // "Your schedule for Jan 15-21 is ready"
+  actionUrl?: string; // Link to relevant page
+  isRead: boolean;
+  createdAt: number;
+  readAt?: number;
+  metadata?: string; // JSON: { weekKey, swapId, etc. }
+}
+
 export interface SavedSchedule {
   id: string;
   weekStart: string;
@@ -261,6 +275,67 @@ export async function updateShiftSwapRequestStatus(
       reviewedBy,
     })
   );
+}
+
+// Notification functions
+export async function createNotification(notification: Omit<Notification, 'id' | 'createdAt'>) {
+  const notificationId = id();
+  await db.transact(
+    tx.notifications[notificationId].update({
+      ...notification,
+      createdAt: Date.now(),
+    })
+  );
+  return notificationId;
+}
+
+export function useNotifications(userId: string | null) {
+  const { data, isLoading, error } = db.useQuery(
+    userId ? { notifications: { $: { where: { userId } } } } : {}
+  );
+  return {
+    notifications: userId ? (data?.notifications || []) as Notification[] : [],
+    isLoading,
+    error,
+  };
+}
+
+export function useUnreadNotifications(userId: string | null) {
+  const { data, isLoading, error } = db.useQuery(
+    userId ? { notifications: { $: { where: { userId, isRead: false } } } } : {}
+  );
+  return {
+    unreadNotifications: userId ? (data?.notifications || []) as Notification[] : [],
+    isLoading,
+    error,
+  };
+}
+
+export async function markNotificationAsRead(notificationId: string) {
+  await db.transact(
+    tx.notifications[notificationId].update({
+      isRead: true,
+      readAt: Date.now(),
+    })
+  );
+}
+
+export async function markAllNotificationsAsRead(userId: string) {
+  const { data } = await db.queryOnce(
+    { notifications: { $: { where: { userId, isRead: false } } } }
+  );
+
+  if (data?.notifications) {
+    await Promise.all(
+      (data.notifications as Notification[]).map(n =>
+        markNotificationAsRead(n.id)
+      )
+    );
+  }
+}
+
+export async function deleteNotification(notificationId: string) {
+  await db.transact(tx.notifications[notificationId].delete());
 }
 
 // Schedule persistence functions
