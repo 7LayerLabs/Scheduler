@@ -468,6 +468,69 @@ export async function updatePreferenceAnalysis(
   await db.transact(tx.employeePreferenceAnalysis[analysisId].update(analysis));
 }
 
+// Schedule Templates
+export interface ScheduleTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  category: 'seasonal' | 'event' | 'standard' | 'custom';
+  assignments: string; // JSON: ScheduleAssignment[]
+  staffingNeeds?: string; // JSON: WeeklyStaffingNeeds
+  weekNotesTemplate?: string;
+  createdAt: number;
+  createdBy: string;
+  lastUsedAt?: number;
+  usageCount: number;
+}
+
+export async function createScheduleTemplate(template: Omit<ScheduleTemplate, 'id' | 'createdAt' | 'usageCount'>) {
+  const templateId = id();
+  await db.transact(tx.scheduleTemplates[templateId].update({
+    ...template,
+    createdAt: Date.now(),
+    usageCount: 0,
+  }));
+  return templateId;
+}
+
+export function useScheduleTemplates() {
+  const { data, isLoading, error } = db.useQuery({ scheduleTemplates: {} });
+  return {
+    templates: (data?.scheduleTemplates || []) as ScheduleTemplate[],
+    isLoading,
+    error,
+  };
+}
+
+export function useScheduleTemplatesByCategory(category: string) {
+  const { data, isLoading, error } = db.useQuery(
+    { scheduleTemplates: { $: { where: { category } } } }
+  );
+  return {
+    templates: (data?.scheduleTemplates || []) as ScheduleTemplate[],
+    isLoading,
+    error,
+  };
+}
+
+export async function updateScheduleTemplate(
+  templateId: string,
+  updates: Partial<Omit<ScheduleTemplate, 'id' | 'createdAt' | 'createdBy'>>
+) {
+  await db.transact(tx.scheduleTemplates[templateId].update(updates));
+}
+
+export async function deleteScheduleTemplate(templateId: string) {
+  await db.transact(tx.scheduleTemplates[templateId].delete());
+}
+
+export async function incrementTemplateUsage(templateId: string) {
+  await db.transact(tx.scheduleTemplates[templateId].update({
+    usageCount: (doc) => (doc.usageCount || 0) + 1,
+    lastUsedAt: Date.now(),
+  }));
+}
+
 // Schedule persistence functions
 export async function saveSchedule(schedule: Omit<SavedSchedule, 'id'>) {
   const scheduleId = id();
