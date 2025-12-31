@@ -93,8 +93,8 @@ test_result "useScheduleTemplates hook exported"
 grep -q "export function useAnalyticsHistory" lib/instantdb.ts
 test_result "useAnalyticsHistory hook exported"
 
-grep -q "export async function saveScheduleTemplate" lib/instantdb.ts
-test_result "saveScheduleTemplate function exported"
+grep -q "export async function saveCurrentScheduleAsTemplate" lib/templates/saveTemplate.ts
+test_result "Template save function exported"
 
 echo ""
 echo "TEST SUITE 5: GIT STATUS"
