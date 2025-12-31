@@ -868,10 +868,7 @@ export function useWeeklyRules() {
 
 // Update rules for a specific week
 export async function updateWeeklyRulesForWeek(weekKey: string, rules: ScheduleOverride[], rulesDisplay: string[]) {
-  // Always generate a consistent ID based on weekKey so queries can find it
-  const rulesId = `weekly-rules-${weekKey}`;
-
-  console.log(`[Rules] Saving ${rulesDisplay.length} rules for week ${weekKey}`, { rulesId, weekKey });
+  console.log(`[Rules] Saving ${rulesDisplay.length} rules for week ${weekKey}`);
 
   const data = {
     weekKey,
@@ -881,17 +878,19 @@ export async function updateWeeklyRulesForWeek(weekKey: string, rules: ScheduleO
   };
 
   try {
-    // First, try to query if it exists
+    // Query for existing document for this weekKey
     const result = await db.queryOnce({ weeklyRules: { $: { where: { weekKey } } } });
-    const exists = result.data?.weeklyRules?.[0];
+    const existing = result.data?.weeklyRules?.[0] as { id: string } | undefined;
 
-    console.log(`[Rules] Document exists for ${weekKey}:`, !!exists);
+    // Use existing ID if found, otherwise generate new UUID
+    const rulesId = existing?.id || id();
 
-    // Use update (works for both create and update with InstantDB)
+    console.log(`[Rules] Document exists for ${weekKey}:`, !!existing, `ID: ${rulesId}`);
+
+    // Use update - InstantDB creates doc if missing
     await db.transact(tx.weeklyRules[rulesId].update(data));
 
     // Give InstantDB subscription time to propagate the change
-    // Increased to 300ms for reliable propagation
     await new Promise(resolve => setTimeout(resolve, 300));
 
     console.log(`[Rules] ✅ Saved ${rulesDisplay.length} rules for week ${weekKey}`);
