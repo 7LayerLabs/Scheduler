@@ -754,6 +754,18 @@ export function generateSchedule(
         let shiftStartTime = rule.startTime || '09:00';
         let shiftEndTime = rule.endTime || '17:00';
 
+        // IMPORTANT: If employee has availability constraints, respect them
+        // This prevents shifts from extending beyond when the employee can work
+        const dayAvailForClamp = emp.availability[dayKeyForFixed] as DayAvailability | null;
+        if (dayAvailForClamp?.shifts && dayAvailForClamp.shifts.length > 0) {
+          const availShift = dayAvailForClamp.shifts[0]; // Take first shift definition
+          // If the fixed rule doesn't specify an end time, use availability end time if available
+          if (!rule.endTime && availShift.endTime) {
+            shiftEndTime = availShift.endTime;
+            console.log(`[FIXED RULE] Using employee availability end time ${shiftEndTime} for ${emp.name} on ${ruleDay}`);
+          }
+        }
+
         // Clamp to business hours and early close
         const clamped = clampShiftToOperatingWindow(ruleDay, shiftStartTime, shiftEndTime);
         if (!clamped) {
@@ -1705,6 +1717,40 @@ function assignShift(
     return;
   }
 
+  // ADDITIONAL CHECK: For opener/morning slots, check if there's already an assignment
+  // that significantly overlaps with this shift's time range (regardless of shiftId).
+  // This prevents double-booking when fixed shifts have different IDs like "fri-open-fixed-krisann".
+  const shiftStartMins = timeToMinutes(shift.startTime);
+  const shiftEndMins = timeToMinutes(shift.endTime);
+  const shiftDurationMins = shiftEndMins - shiftStartMins;
+
+  // Check if this is an opener slot (starts at business open time, typically 7:15)
+  const isOpenerSlot = shiftStartMins <= 7 * 60 + 30; // 7:30 AM or earlier
+
+  if (isOpenerSlot && shift.requiredStaff === 1) {
+    // Count how many people already have significant overlap with this opener time
+    const overlappingAssignments = assignments.filter(a => {
+      if (a.date !== date) return false;
+      if (!a.startTime || !a.endTime) return false;
+
+      const aStart = timeToMinutes(a.startTime);
+      const aEnd = timeToMinutes(a.endTime);
+
+      // Calculate overlap
+      const overlapStart = Math.max(shiftStartMins, aStart);
+      const overlapEnd = Math.min(shiftEndMins, aEnd);
+      const overlapMins = Math.max(0, overlapEnd - overlapStart);
+
+      // If overlap is more than 50% of the slot duration, consider it filled
+      return overlapMins > shiftDurationMins * 0.5;
+    });
+
+    if (overlappingAssignments.length >= shift.requiredStaff) {
+      console.log(`[assignShift] Skipping opener slot ${shift.id} on ${date} - already covered by overlapping assignment(s): ${overlappingAssignments.map(a => a.shiftId).join(', ')}`);
+      return;
+    }
+  }
+
   // FIRST: Process explicit "assign" overrides - these MUST be respected
   // They bypass normal availability checks but must match the day
   const forcedAssignments = overrides.filter(o =>
@@ -1915,8 +1961,10 @@ function assignShift(
   // 1. Explicit prioritize overrides
   // 2. Opener preference (canOpen) for opening shifts
   // 3. Employees who need minimum shifts but are under quota
-  // 4. Shift type preferences (morning/night)
-  // 5. Fewer hours worked (balance workload)
+  // 4. VALUE RANK - prefer higher-ranked (lower number) employees
+  // 5. Shift type preferences (morning/night)
+  // 6. Role fit (skills): bartender and solo preferences
+  // 7. Fewer hours worked (only as final tie-breaker)
   const isOpener = isOpenerShift(shift.startTime, shift.name);
 
   availableEmployees.sort((a, b) => {
@@ -1951,7 +1999,13 @@ function assignShift(
       if (aDeficit !== bDeficit) return bDeficit - aDeficit;
     }
 
-    // 4. Shift type preferences
+    // 4. VALUE RANK - prefer higher-ranked employees (lower rank number = higher priority)
+    // Employees without a rank are treated as lowest priority (9999)
+    const aRank = a.valueRank ?? 9999;
+    const bRank = b.valueRank ?? 9999;
+    if (aRank !== bRank) return aRank - bRank;
+
+    // 5. Shift type preferences
     const shiftType = shift.type;
     const aPrefers = (
       (shiftType === 'morning' && a.preferences?.prefersMorning) ||
@@ -1966,7 +2020,7 @@ function assignShift(
 
     if (aPrefers !== bPrefers) return bPrefers - aPrefers;
 
-    // 5. Role fit (skills): bartender and solo preferences
+    // 6. Role fit (skills): bartender and solo preferences
     if (shift.requiresBartender) {
       const aIsBar = employeeHasRole(a, 'bar') ? 1 : 0;
       const bIsBar = employeeHasRole(b, 'bar') ? 1 : 0;
@@ -1983,7 +2037,7 @@ function assignShift(
       if (a.aloneScale !== b.aloneScale) return b.aloneScale - a.aloneScale;
     }
 
-    // 6. Fewer hours worked (balance workload)
+    // 7. Fewer hours worked (final tie-breaker only)
     return (employeeHours[a.id] || 0) - (employeeHours[b.id] || 0);
   });
 

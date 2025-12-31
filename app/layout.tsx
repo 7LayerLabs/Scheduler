@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bobola's Schedule Manager",
+  title: "Tempo | Bobola's",
   description: "Smart staff scheduling for Bobola's Restaurant",
 };
 

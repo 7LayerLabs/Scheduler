@@ -551,7 +551,11 @@ export default function Home() {
         createdAt: Date.now(),
         createdBy: authUser.email || 'Unknown',
       });
-      alert('Schedule archived successfully!');
+
+      // Clear the schedule from the active view - "filing it away"
+      handleClearSchedule();
+
+      alert('Schedule archived to History!');
     } catch (error) {
       console.error('Failed to archive schedule:', error);
       alert('Failed to archive schedule.');
@@ -613,7 +617,9 @@ export default function Home() {
 
   // Show login page if not authenticated
   if (!authUser) {
-    return <LoginPage onLoginSuccess={() => window.location.reload()} logoUrl={logoUrl} />;
+    // Note: No window.location.reload() needed - InstantDB's useAuth hook
+    // will automatically detect auth state change and re-render
+    return <LoginPage onLoginSuccess={() => { }} logoUrl={logoUrl} />;
   }
 
   // Show loading while checking first user status or profile
@@ -718,10 +724,10 @@ export default function Home() {
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-[#0d0d0f] font-bold text-sm">B</span>
+                    <span className="text-[#0d0d0f] font-bold text-sm">T</span>
                   )}
                 </div>
-                <span className="font-semibold text-white text-sm">Bobola&apos;s</span>
+                <span className="font-semibold text-white text-sm">Tempo</span>
               </div>
 
               {/* Search - hidden on small mobile */}
@@ -947,6 +953,7 @@ export default function Home() {
               setStaffingNeeds={setStaffingNeeds}
               saveAsDefaultTemplate={saveAsDefaultTemplate}
               showSavedDefaultMessage={showSavedDefaultMessage}
+              onUpdateEmployee={updateEmployeeDB}
             />
           )}
         </div>
@@ -967,7 +974,7 @@ export default function Home() {
           }
         }
       `}</style>
-    </div>
+    </div >
   );
 }
 

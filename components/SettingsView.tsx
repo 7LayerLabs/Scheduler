@@ -1,12 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { WeeklySchedule, Employee, ScheduleAssignment, WeeklyStaffingNeeds, StaffingSlot, DayOfWeek } from '@/lib/types';
 import UserManagement from './UserManagement';
 import { User } from '@/lib/instantdb';
 import { normalizeStaffingSlotLabel } from '@/lib/scheduling/labels';
 import { cloneWeeklyStaffingNeedsWithFreshIds, RECOMMENDED_WEEKLY_STAFFING_NEEDS } from '@/lib/staffingPresets';
 import { validateStaffingNeeds } from '@/lib/staffingValidation';
+import DisplayPreferencesCard from './settings/DisplayPreferencesCard';
+import SchedulingRulesCard from './settings/SchedulingRulesCard';
+import BusinessSettingsCard from './settings/BusinessSettingsCard';
+import BusinessHoursCard from './settings/BusinessHoursCard';
+import EmployeeRankingCard from './settings/EmployeeRankingCard';
+import DataManagementCard from './settings/DataManagementCard';
 
 export interface AppSettings {
   // Business Settings
@@ -50,6 +56,8 @@ interface Props {
   setStaffingNeeds?: (needs: WeeklyStaffingNeeds) => void;
   saveAsDefaultTemplate?: () => void;
   showSavedDefaultMessage?: boolean;
+  // Employee ranking props
+  onUpdateEmployee?: (employee: Employee) => Promise<void>;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -75,7 +83,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 export { DEFAULT_SETTINGS };
 
-export default function SettingsView({ settings, onUpdateSettings, onExportSchedule, schedule, employees, weekStart, formatWeekRange, logoUrl, onLogoChange, onSyncEmployees, missingEmployeeCount, currentUser, profilePicUrl, staffingNeeds, setStaffingNeeds, saveAsDefaultTemplate, showSavedDefaultMessage }: Props) {
+export default function SettingsView({ settings, onUpdateSettings, onExportSchedule, schedule, employees, weekStart, formatWeekRange, logoUrl, onLogoChange, onSyncEmployees, missingEmployeeCount, currentUser, profilePicUrl, staffingNeeds, setStaffingNeeds, saveAsDefaultTemplate, showSavedDefaultMessage, onUpdateEmployee }: Props) {
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
   const [hasChanges, setHasChanges] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
@@ -83,6 +91,57 @@ export default function SettingsView({ settings, onUpdateSettings, onExportSched
   const [activeSection, setActiveSection] = useState<'general' | 'staffing' | 'users'>('general');
   const [copiedDay, setCopiedDay] = useState<{ slots: StaffingSlot[]; notes?: string; fromDay: string } | null>(null);
   const [copiedSlot, setCopiedSlot] = useState<{ startTime: string; endTime: string; label: string } | null>(null);
+  const [rankingOrder, setRankingOrder] = useState<string[]>([]);
+  const [isSavingRanks, setIsSavingRanks] = useState(false);
+  const [rankingsChanged, setRankingsChanged] = useState(false);
+
+  // Initialize ranking order from employees when they load/change
+  useEffect(() => {
+    if (employees && employees.length > 0 && rankingOrder.length === 0) {
+      const activeEmployees = employees.filter(e => e.isActive !== false);
+      const sorted = [...activeEmployees]
+        .sort((a, b) => (a.valueRank ?? 9999) - (b.valueRank ?? 9999))
+        .map(e => e.id);
+      setRankingOrder(sorted);
+    }
+  }, [employees, rankingOrder.length]);
+
+  const moveEmployeeUp = (employeeId: string) => {
+    const idx = rankingOrder.indexOf(employeeId);
+    if (idx <= 0) return;
+    const newOrder = [...rankingOrder];
+    [newOrder[idx - 1], newOrder[idx]] = [newOrder[idx], newOrder[idx - 1]];
+    setRankingOrder(newOrder);
+    setRankingsChanged(true);
+  };
+
+  const moveEmployeeDown = (employeeId: string) => {
+    const idx = rankingOrder.indexOf(employeeId);
+    if (idx < 0 || idx >= rankingOrder.length - 1) return;
+    const newOrder = [...rankingOrder];
+    [newOrder[idx], newOrder[idx + 1]] = [newOrder[idx + 1], newOrder[idx]];
+    setRankingOrder(newOrder);
+    setRankingsChanged(true);
+  };
+
+  const saveRankings = async () => {
+    if (!onUpdateEmployee) return;
+    setIsSavingRanks(true);
+    try {
+      for (let i = 0; i < rankingOrder.length; i++) {
+        const empId = rankingOrder[i];
+        const emp = employees?.find(e => e.id === empId);
+        if (emp) {
+          await onUpdateEmployee({ ...emp, valueRank: i + 1 });
+        }
+      }
+      setRankingsChanged(false);
+    } catch (error) {
+      console.error('Failed to save rankings:', error);
+    } finally {
+      setIsSavingRanks(false);
+    }
+  };
 
   const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     setLocalSettings(prev => ({ ...prev, [key]: value }));
@@ -435,11 +494,10 @@ export default function SettingsView({ settings, onUpdateSettings, onExportSched
       <div className="flex gap-2 border-b border-[#2a2a32] pb-0">
         <button
           onClick={() => setActiveSection('general')}
-          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-            activeSection === 'general'
-              ? 'bg-[#1a1a1f] text-[#e5a825] border border-[#2a2a32] border-b-[#1a1a1f] -mb-px'
-              : 'text-[#6b6b75] hover:text-white'
-          }`}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${activeSection === 'general'
+            ? 'bg-[#1a1a1f] text-[#e5a825] border border-[#2a2a32] border-b-[#1a1a1f] -mb-px'
+            : 'text-[#6b6b75] hover:text-white'
+            }`}
         >
           <span className="flex items-center gap-2">
             <SettingsGearIcon className="w-4 h-4" />
@@ -448,11 +506,10 @@ export default function SettingsView({ settings, onUpdateSettings, onExportSched
         </button>
         <button
           onClick={() => setActiveSection('staffing')}
-          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-            activeSection === 'staffing'
-              ? 'bg-[#1a1a1f] text-[#e5a825] border border-[#2a2a32] border-b-[#1a1a1f] -mb-px'
-              : 'text-[#6b6b75] hover:text-white'
-          }`}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${activeSection === 'staffing'
+            ? 'bg-[#1a1a1f] text-[#e5a825] border border-[#2a2a32] border-b-[#1a1a1f] -mb-px'
+            : 'text-[#6b6b75] hover:text-white'
+            }`}
         >
           <span className="flex items-center gap-2">
             <GridIcon className="w-4 h-4" />
@@ -461,11 +518,10 @@ export default function SettingsView({ settings, onUpdateSettings, onExportSched
         </button>
         <button
           onClick={() => setActiveSection('users')}
-          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-            activeSection === 'users'
-              ? 'bg-[#1a1a1f] text-[#e5a825] border border-[#2a2a32] border-b-[#1a1a1f] -mb-px'
-              : 'text-[#6b6b75] hover:text-white'
-          }`}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${activeSection === 'users'
+            ? 'bg-[#1a1a1f] text-[#e5a825] border border-[#2a2a32] border-b-[#1a1a1f] -mb-px'
+            : 'text-[#6b6b75] hover:text-white'
+            }`}
         >
           <span className="flex items-center gap-2">
             <UserGroupIcon className="w-4 h-4" />
@@ -500,390 +556,43 @@ export default function SettingsView({ settings, onUpdateSettings, onExportSched
       {/* General Settings */}
       {activeSection === 'general' && (
         <>
-      {/* Business Settings */}
-      <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-6">
-        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <BuildingIcon className="w-5 h-5 text-[#e5a825]" />
-          Business Settings
-        </h2>
+          {/* Business Settings */}
+          <BusinessSettingsCard
+            restaurantName={localSettings.restaurantName}
+            logoUrl={logoUrl}
+            onUpdateName={(name) => updateSetting('restaurantName', name)}
+            onLogoChange={onLogoChange || (() => {})}
+          />
 
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-[#a0a0a8] mb-2">
-              Restaurant Name
-            </label>
-            <input
-              type="text"
-              value={localSettings.restaurantName}
-              onChange={(e) => updateSetting('restaurantName', e.target.value)}
-              className="w-full max-w-md px-4 py-2 bg-[#141417] border border-[#2a2a32] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825]"
+          <BusinessHoursCard
+            businessHours={localSettings.businessHours}
+            onUpdateBusinessHours={updateBusinessHours}
+          />
+
+          <SchedulingRulesCard
+            settings={localSettings}
+            onUpdateSetting={updateSetting}
+          />
+
+          {employees && employees.length > 0 && onUpdateEmployee && (
+            <EmployeeRankingCard
+              employees={employees}
+              onUpdateEmployee={onUpdateEmployee}
             />
-          </div>
-
-          {/* Logo Upload */}
-          <div>
-            <label className="block text-sm font-medium text-[#a0a0a8] mb-2">
-              Logo
-            </label>
-            <div className="flex items-center gap-4">
-              {/* Current Logo Preview */}
-              <div className="w-16 h-16 bg-[#e5a825] rounded-xl flex items-center justify-center shadow-lg overflow-hidden">
-                {logoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-[#0d0d0f] font-bold text-2xl">B</span>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <label className="px-4 py-2 bg-[#141417] text-white border border-[#2a2a32] rounded-lg font-medium hover:bg-[#222228] transition-colors cursor-pointer flex items-center gap-2">
-                    <UploadIcon className="w-4 h-4" />
-                    Upload Image
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file && onLogoChange) {
-                          const reader = new FileReader();
-                          reader.onload = (event) => {
-                            onLogoChange(event.target?.result as string);
-                          };
-                          reader.readAsDataURL(file);
-                        }
-                      }}
-                    />
-                  </label>
-                  {logoUrl && onLogoChange && (
-                    <button
-                      onClick={() => onLogoChange(null)}
-                      className="px-3 py-2 bg-[#141417] text-[#ef4444] border border-[#2a2a32] rounded-lg font-medium hover:bg-[#ef4444]/10 hover:border-[#ef4444]/30 transition-colors"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-                <p className="text-xs text-[#6b6b75]">
-                  Recommended: Square image, at least 88x88 pixels
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Business Hours */}
-      <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-            <ClockIcon className="w-5 h-5 text-[#e5a825]" />
-            Business Hours
-          </h2>
-          {copiedHours && (
-            <span className="text-xs text-[#22c55e] flex items-center gap-1">
-              <CheckIcon className="w-3 h-3" />
-              Copied: {copiedHours.open} - {copiedHours.close}
-            </span>
           )}
-        </div>
 
-        <div className="space-y-3">
-          {days.map(day => {
-            const hours = localSettings.businessHours[day];
-            return (
-              <div key={day} className="flex items-center gap-4 p-3 bg-[#141417] rounded-lg border border-[#2a2a32]">
-                <div className="w-28">
-                  <span className="text-sm font-medium text-white">{dayLabels[day]}</span>
-                </div>
+          <DisplayPreferencesCard
+            settings={localSettings}
+            onUpdateSetting={updateSetting}
+          />
 
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={hours.closed}
-                    onChange={(e) => updateBusinessHours(day, 'closed', e.target.checked)}
-                    className="w-4 h-4 rounded border-[#2a2a32] bg-[#0d0d0f] text-[#e5a825] focus:ring-[#e5a825]/40"
-                  />
-                  <span className="text-sm text-[#6b6b75]">Closed</span>
-                </label>
-
-                {!hours.closed && (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="time"
-                        value={hours.open}
-                        onChange={(e) => updateBusinessHours(day, 'open', e.target.value)}
-                        className="px-3 py-1.5 bg-[#0d0d0f] border border-[#2a2a32] rounded text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
-                      />
-                      <span className="text-[#6b6b75]">to</span>
-                      <input
-                        type="time"
-                        value={hours.close}
-                        onChange={(e) => updateBusinessHours(day, 'close', e.target.value)}
-                        className="px-3 py-1.5 bg-[#0d0d0f] border border-[#2a2a32] rounded text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
-                      />
-                    </div>
-
-                    {/* Copy/Paste/Apply buttons */}
-                    <div className="flex items-center gap-1 ml-auto">
-                      <button
-                        onClick={() => copyHours(day)}
-                        className="p-1.5 text-[#6b6b75] hover:text-[#3b82f6] hover:bg-[#3b82f6]/10 rounded transition-colors"
-                        title="Copy these hours"
-                      >
-                        <CopyIcon className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => pasteHours(day)}
-                        disabled={!copiedHours}
-                        className={`p-1.5 rounded transition-colors ${
-                          copiedHours
-                            ? 'text-[#6b6b75] hover:text-[#22c55e] hover:bg-[#22c55e]/10'
-                            : 'text-[#3a3a45] cursor-not-allowed'
-                        }`}
-                        title={copiedHours ? 'Paste copied hours' : 'Copy hours first'}
-                      >
-                        <PasteIcon className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => applyToAllDays(day)}
-                        className="p-1.5 text-[#6b6b75] hover:text-[#a855f7] hover:bg-[#a855f7]/10 rounded transition-colors"
-                        title="Apply to all other days"
-                      >
-                        <ApplyAllIcon className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </>
-                )}
-
-                {hours.closed && (
-                  <span className="text-sm text-[#ef4444] flex-1">Closed</span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Scheduling Rules */}
-      <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-6">
-        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <RulesIcon className="w-5 h-5 text-[#e5a825]" />
-          Scheduling Rules
-        </h2>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-[#a0a0a8] mb-2">
-              Overtime Threshold (hours/week)
-            </label>
-            <input
-              type="number"
-              min="20"
-              max="60"
-              value={localSettings.overtimeThreshold}
-              onChange={(e) => updateSetting('overtimeThreshold', parseInt(e.target.value) || 40)}
-              className="w-full max-w-[120px] px-4 py-2 bg-[#141417] border border-[#2a2a32] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
-            />
-            <p className="text-xs text-[#6b6b75] mt-1">Warn when employee approaches this many hours</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-[#a0a0a8] mb-2">
-              Min Rest Between Shifts (hours)
-            </label>
-            <input
-              type="number"
-              min="4"
-              max="24"
-              value={localSettings.minRestBetweenShifts}
-              onChange={(e) => updateSetting('minRestBetweenShifts', parseInt(e.target.value) || 8)}
-              className="w-full max-w-[120px] px-4 py-2 bg-[#141417] border border-[#2a2a32] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
-            />
-            <p className="text-xs text-[#6b6b75] mt-1">Minimum hours between end of one shift and start of next</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-[#a0a0a8] mb-2">
-              Bartending Skill Threshold
-            </label>
-            <select
-              value={localSettings.bartendingThreshold}
-              onChange={(e) => updateSetting('bartendingThreshold', parseInt(e.target.value))}
-              className="w-full max-w-[120px] px-4 py-2 bg-[#141417] border border-[#2a2a32] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
-            >
-              {[1, 2, 3, 4, 5].map(n => (
-                <option key={n} value={n}>{n} stars</option>
-              ))}
-            </select>
-            <p className="text-xs text-[#6b6b75] mt-1">Employees below this need a higher-rated bartender on shift</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-[#a0a0a8] mb-2">
-              Can Work Alone Threshold
-            </label>
-            <select
-              value={localSettings.aloneThreshold}
-              onChange={(e) => updateSetting('aloneThreshold', parseInt(e.target.value))}
-              className="w-full max-w-[120px] px-4 py-2 bg-[#141417] border border-[#2a2a32] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
-            >
-              {[1, 2, 3, 4, 5].map(n => (
-                <option key={n} value={n}>{n} stars</option>
-              ))}
-            </select>
-            <p className="text-xs text-[#6b6b75] mt-1">Rating needed for an employee to work alone</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-[#a0a0a8] mb-2">
-              Minimum Shift Hours
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="8"
-              step="0.5"
-              value={localSettings.minShiftHours}
-              onChange={(e) => updateSetting('minShiftHours', parseFloat(e.target.value) || 3)}
-              className="w-full max-w-[120px] px-4 py-2 bg-[#141417] border border-[#2a2a32] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40"
-            />
-            <p className="text-xs text-[#6b6b75] mt-1">Servers must work at least this many hours per shift</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Display Preferences */}
-      <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-6">
-        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <DisplayIcon className="w-5 h-5 text-[#e5a825]" />
-          Display Preferences
-        </h2>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-[#a0a0a8] mb-2">
-              Time Format
-            </label>
-            <div className="flex gap-3">
-              <label className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer border transition-colors ${
-                localSettings.timeFormat === '12h'
-                  ? 'bg-[#e5a825]/10 border-[#e5a825] text-[#e5a825]'
-                  : 'bg-[#141417] border-[#2a2a32] text-[#6b6b75] hover:border-[#3a3a45]'
-              }`}>
-                <input
-                  type="radio"
-                  name="timeFormat"
-                  value="12h"
-                  checked={localSettings.timeFormat === '12h'}
-                  onChange={() => updateSetting('timeFormat', '12h')}
-                  className="hidden"
-                />
-                <span className="text-sm font-medium">12-hour (2:00 PM)</span>
-              </label>
-              <label className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer border transition-colors ${
-                localSettings.timeFormat === '24h'
-                  ? 'bg-[#e5a825]/10 border-[#e5a825] text-[#e5a825]'
-                  : 'bg-[#141417] border-[#2a2a32] text-[#6b6b75] hover:border-[#3a3a45]'
-              }`}>
-                <input
-                  type="radio"
-                  name="timeFormat"
-                  value="24h"
-                  checked={localSettings.timeFormat === '24h'}
-                  onChange={() => updateSetting('timeFormat', '24h')}
-                  className="hidden"
-                />
-                <span className="text-sm font-medium">24-hour (14:00)</span>
-              </label>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-[#a0a0a8] mb-2">
-              Week Starts On
-            </label>
-            <div className="flex gap-3">
-              <label className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer border transition-colors ${
-                localSettings.weekStartDay === 'monday'
-                  ? 'bg-[#e5a825]/10 border-[#e5a825] text-[#e5a825]'
-                  : 'bg-[#141417] border-[#2a2a32] text-[#6b6b75] hover:border-[#3a3a45]'
-              }`}>
-                <input
-                  type="radio"
-                  name="weekStart"
-                  value="monday"
-                  checked={localSettings.weekStartDay === 'monday'}
-                  onChange={() => updateSetting('weekStartDay', 'monday')}
-                  className="hidden"
-                />
-                <span className="text-sm font-medium">Monday</span>
-              </label>
-              <label className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer border transition-colors ${
-                localSettings.weekStartDay === 'sunday'
-                  ? 'bg-[#e5a825]/10 border-[#e5a825] text-[#e5a825]'
-                  : 'bg-[#141417] border-[#2a2a32] text-[#6b6b75] hover:border-[#3a3a45]'
-              }`}>
-                <input
-                  type="radio"
-                  name="weekStart"
-                  value="sunday"
-                  checked={localSettings.weekStartDay === 'sunday'}
-                  onChange={() => updateSetting('weekStartDay', 'sunday')}
-                  className="hidden"
-                />
-                <span className="text-sm font-medium">Sunday</span>
-              </label>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Data Management */}
-      <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-6">
-        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <DataIcon className="w-5 h-5 text-[#e5a825]" />
-          Data Management
-        </h2>
-
-        <div className="flex flex-wrap gap-3">
-          {onSyncEmployees && missingEmployeeCount !== undefined && missingEmployeeCount > 0 && (
-            <button
-              onClick={onSyncEmployees}
-              className="px-4 py-2 bg-[#e5a825] text-[#0d0d0f] rounded-lg font-medium hover:bg-[#f0b429] transition-colors flex items-center gap-2"
-            >
-              <SyncIcon className="w-4 h-4" />
-              Sync Missing Employees ({missingEmployeeCount})
-            </button>
-          )}
-          {onExportSchedule && (
-            <button
-              onClick={onExportSchedule}
-              className="px-4 py-2 bg-[#3b82f6] text-white rounded-lg font-medium hover:bg-[#2563eb] transition-colors flex items-center gap-2"
-            >
-              <ExportIcon className="w-4 h-4" />
-              Export Schedule
-            </button>
-          )}
-          <button
-            onClick={handlePrintSchedule}
-            className="px-4 py-2 bg-[#141417] text-white border border-[#2a2a32] rounded-lg font-medium hover:bg-[#222228] transition-colors flex items-center gap-2"
-          >
-            <PrintIcon className="w-4 h-4" />
-            Print Schedule
-          </button>
-          <button
-            onClick={handleReset}
-            className="px-4 py-2 bg-[#141417] text-[#ef4444] border border-[#2a2a32] rounded-lg font-medium hover:bg-[#ef4444]/10 hover:border-[#ef4444]/30 transition-colors flex items-center gap-2"
-          >
-            <ResetIcon className="w-4 h-4" />
-            Reset to Defaults
-          </button>
-        </div>
-      </div>
+          <DataManagementCard
+            onSyncEmployees={onSyncEmployees}
+            missingEmployeeCount={missingEmployeeCount}
+            onExportSchedule={onExportSchedule}
+            onPrintSchedule={handlePrintSchedule}
+            onReset={handleReset}
+          />
         </>
       )}
     </div>
@@ -1052,6 +761,30 @@ function SaveIcon({ className }: { className?: string }) {
   );
 }
 
+function TrophyIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 002.748 1.35m-.002 0a6.772 6.772 0 003.044 0" />
+    </svg>
+  );
+}
+
+function ChevronUpIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+    </svg>
+  );
+}
+
 // Staffing Section Component
 interface StaffingSectionProps {
   staffingNeeds: WeeklyStaffingNeeds;
@@ -1216,11 +949,10 @@ function StaffingSection({ staffingNeeds, setStaffingNeeds, saveAsDefaultTemplat
             {saveAsDefaultTemplate && (
               <button
                 onClick={saveAsDefaultTemplate}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
-                  showSavedDefaultMessage
-                    ? 'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
-                    : 'bg-[#e5a825] text-[#0d0d0f] hover:bg-[#f5b835]'
-                }`}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 ${showSavedDefaultMessage
+                  ? 'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
+                  : 'bg-[#e5a825] text-[#0d0d0f] hover:bg-[#f5b835]'
+                  }`}
               >
                 {showSavedDefaultMessage ? (
                   <><CheckIcon className="w-3.5 h-3.5" /> Saved!</>
@@ -1255,11 +987,10 @@ function StaffingSection({ staffingNeeds, setStaffingNeeds, saveAsDefaultTemplat
             <button
               key={key}
               onClick={() => toggleDay(key)}
-              className={`flex-shrink-0 px-4 py-2 rounded-lg border transition-all ${
-                isExpanded
-                  ? 'bg-[#e5a825]/10 border-[#e5a825] text-[#e5a825]'
-                  : 'bg-[#1a1a1f] border-[#2a2a32] text-[#a0a0a8] hover:border-[#3a3a45]'
-              }`}
+              className={`flex-shrink-0 px-4 py-2 rounded-lg border transition-all ${isExpanded
+                ? 'bg-[#e5a825]/10 border-[#e5a825] text-[#e5a825]'
+                : 'bg-[#1a1a1f] border-[#2a2a32] text-[#a0a0a8] hover:border-[#3a3a45]'
+                }`}
             >
               <span className="font-medium">{label}</span>
               <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${isExpanded ? 'bg-[#e5a825]/20' : 'bg-[#2a2a32]'}`}>
@@ -1336,28 +1067,28 @@ function StaffingSection({ staffingNeeds, setStaffingNeeds, saveAsDefaultTemplat
                         <td className="py-2 text-[#6b6b75] text-sm">{index + 1}</td>
                         <td className="py-2">
                           <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={slot.label || ''}
-                            onChange={(e) => updateSlot(key, slot.id, 'label', e.target.value)}
-                            className="w-full px-2 py-1 text-sm bg-transparent border border-transparent hover:border-[#2a2a32] focus:border-[#e5a825] focus:bg-[#141417] rounded text-white focus:outline-none transition-colors"
-                            placeholder="Role name"
-                          />
-                          <select
-                            value={normalizeStaffingSlotLabel({ label: slot.label, day: key as DayOfWeek, startTime: slot.startTime, endTime: slot.endTime })}
-                            onChange={(e) => updateSlot(key, slot.id, 'label', e.target.value)}
-                            className="px-2 py-1 text-xs bg-[#141417] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-1 focus:ring-[#e5a825]/40"
-                            title="Quick label preset"
-                          >
-                            <option value="Opener">Opener</option>
-                            {(key === 'saturday' || key === 'sunday') && <option value="Weekend Opener">Weekend Opener</option>}
-                            <option value="2nd Server">2nd Server</option>
-                            <option value="3rd Server">3rd Server</option>
-                            <option value="Mid Shift">Mid Shift</option>
-                            <option value="Bar">Bar</option>
-                            <option value="Closer">Closer</option>
-                            <option value="Dinner">Dinner</option>
-                          </select>
+                            <input
+                              type="text"
+                              value={slot.label || ''}
+                              onChange={(e) => updateSlot(key, slot.id, 'label', e.target.value)}
+                              className="w-full px-2 py-1 text-sm bg-transparent border border-transparent hover:border-[#2a2a32] focus:border-[#e5a825] focus:bg-[#141417] rounded text-white focus:outline-none transition-colors"
+                              placeholder="Role name"
+                            />
+                            <select
+                              value={normalizeStaffingSlotLabel({ label: slot.label, day: key as DayOfWeek, startTime: slot.startTime, endTime: slot.endTime })}
+                              onChange={(e) => updateSlot(key, slot.id, 'label', e.target.value)}
+                              className="px-2 py-1 text-xs bg-[#141417] border border-[#2a2a32] rounded text-white focus:outline-none focus:ring-1 focus:ring-[#e5a825]/40"
+                              title="Quick label preset"
+                            >
+                              <option value="Opener">Opener</option>
+                              {(key === 'saturday' || key === 'sunday') && <option value="Weekend Opener">Weekend Opener</option>}
+                              <option value="2nd Server">2nd Server</option>
+                              <option value="3rd Server">3rd Server</option>
+                              <option value="Mid Shift">Mid Shift</option>
+                              <option value="Bar">Bar</option>
+                              <option value="Closer">Closer</option>
+                              <option value="Dinner">Dinner</option>
+                            </select>
                           </div>
                         </td>
                         <td className="py-2">

@@ -55,37 +55,35 @@ export default function StaffDashboard({
   return (
     <div className="min-h-screen bg-[#0d0d0f]">
       {/* Header */}
-      <header className="bg-[#141417] border-b border-[#2a2a32] px-6 py-4">
-        <div className="flex items-center justify-between">
+      <header className="bg-[#141417] border-b border-[#2a2a32] px-4 sm:px-6 py-3 sm:py-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0">
           <div>
-            <h1 className="text-2xl font-bold text-white">
+            <h1 className="text-xl sm:text-2xl font-bold text-white">
               Bobola<span className="text-[#e5a825]">&apos;</span>s
             </h1>
-            <p className="text-sm text-[#6b6b75]">Welcome, {user.name}</p>
+            <p className="text-xs sm:text-sm text-[#6b6b75]">Welcome, {user.name}</p>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="text-sm text-[#a0a0a8]">{formatWeekRange(weekStart)}</p>
-            </div>
+          <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4">
+            <p className="text-xs sm:text-sm text-[#a0a0a8]">{formatWeekRange(weekStart)}</p>
             <div className="flex gap-1">
               <button
                 onClick={() => changeWeek(-1)}
-                className="p-2 hover:bg-[#222228] rounded-lg transition-colors"
+                className="p-1.5 sm:p-2 hover:bg-[#222228] rounded-lg transition-colors"
               >
-                <ChevronLeftIcon className="w-5 h-5 text-[#6b6b75]" />
+                <ChevronLeftIcon className="w-4 h-4 sm:w-5 sm:h-5 text-[#6b6b75]" />
               </button>
               <button
                 onClick={() => changeWeek(1)}
-                className="p-2 hover:bg-[#222228] rounded-lg transition-colors"
+                className="p-1.5 sm:p-2 hover:bg-[#222228] rounded-lg transition-colors"
               >
-                <ChevronRightIcon className="w-5 h-5 text-[#6b6b75]" />
+                <ChevronRightIcon className="w-4 h-4 sm:w-5 sm:h-5 text-[#6b6b75]" />
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="p-6 max-w-4xl mx-auto space-y-6">
+      <main className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4 sm:space-y-6">
         {/* My Shifts This Week */}
         <section className="bg-[#1a1a1f] rounded-2xl border border-[#2a2a32] p-6">
           <div className="flex items-center justify-between mb-4">
@@ -94,17 +92,24 @@ export default function StaffDashboard({
           </div>
 
           {myShifts.length > 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-2 sm:space-y-3">
               {myShifts.sort((a, b) => a.date.localeCompare(b.date)).map((shift, idx) => (
                 <div
                   key={idx}
-                  className="flex items-center justify-between p-4 bg-[#141417] rounded-xl border border-[#2a2a32] hover:border-[#e5a825]/30 transition-colors"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 p-3 sm:p-4 bg-[#141417] rounded-xl border border-[#2a2a32] hover:border-[#e5a825]/30 transition-colors"
                 >
-                  <div>
-                    <p className="font-semibold text-white">{getDayName(shift.date)}</p>
-                    <p className="text-sm text-[#6b6b75]">{formatDate(shift.date)}</p>
+                  <div className="flex items-center justify-between sm:block">
+                    <div>
+                      <p className="font-semibold text-white text-sm sm:text-base">{getDayName(shift.date)}</p>
+                      <p className="text-xs sm:text-sm text-[#6b6b75]">{formatDate(shift.date)}</p>
+                    </div>
+                    <p className="sm:hidden font-medium text-[#e5a825] text-sm">
+                      {shift.startTime && shift.endTime
+                        ? `${formatTime(shift.startTime)} - ${formatTime(shift.endTime)}`
+                        : 'TBD'}
+                    </p>
                   </div>
-                  <div className="text-right">
+                  <div className="hidden sm:block text-right">
                     <p className="font-medium text-[#e5a825]">
                       {shift.startTime && shift.endTime
                         ? `${formatTime(shift.startTime)} - ${formatTime(shift.endTime)}`
@@ -119,7 +124,7 @@ export default function StaffDashboard({
                       });
                       setShowSwapModal(true);
                     }}
-                    className="px-3 py-1.5 text-xs font-medium text-[#a855f7] bg-[#a855f7]/10 rounded-lg hover:bg-[#a855f7]/20 transition-colors border border-[#a855f7]/30"
+                    className="w-full sm:w-auto px-3 py-2 sm:py-1.5 text-xs font-medium text-[#a855f7] bg-[#a855f7]/10 rounded-lg hover:bg-[#a855f7]/20 transition-colors border border-[#a855f7]/30 text-center"
                   >
                     Request Swap
                   </button>
@@ -134,20 +139,20 @@ export default function StaffDashboard({
         </section>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4">
           <button
             onClick={() => setShowTimeOffModal(true)}
-            className="p-6 bg-[#1a1a1f] rounded-2xl border border-[#2a2a32] hover:border-[#22c55e]/30 transition-all group"
+            className="p-4 sm:p-6 bg-[#1a1a1f] rounded-xl sm:rounded-2xl border border-[#2a2a32] hover:border-[#22c55e]/30 transition-all group"
           >
-            <CalendarOffIcon className="w-8 h-8 text-[#22c55e] mb-3" />
-            <h3 className="font-semibold text-white group-hover:text-[#22c55e] transition-colors">Request Time Off</h3>
-            <p className="text-sm text-[#6b6b75] mt-1">Submit a time off request</p>
+            <CalendarOffIcon className="w-6 h-6 sm:w-8 sm:h-8 text-[#22c55e] mb-2 sm:mb-3" />
+            <h3 className="font-semibold text-white text-sm sm:text-base group-hover:text-[#22c55e] transition-colors">Request Time Off</h3>
+            <p className="text-xs sm:text-sm text-[#6b6b75] mt-1 hidden sm:block">Submit a time off request</p>
           </button>
 
-          <div className="p-6 bg-[#1a1a1f] rounded-2xl border border-[#2a2a32]">
-            <ClockIcon className="w-8 h-8 text-[#3b82f6] mb-3" />
-            <h3 className="font-semibold text-white">Hours This Week</h3>
-            <p className="text-2xl font-bold text-[#3b82f6] mt-1">
+          <div className="p-4 sm:p-6 bg-[#1a1a1f] rounded-xl sm:rounded-2xl border border-[#2a2a32]">
+            <ClockIcon className="w-6 h-6 sm:w-8 sm:h-8 text-[#3b82f6] mb-2 sm:mb-3" />
+            <h3 className="font-semibold text-white text-sm sm:text-base">Hours This Week</h3>
+            <p className="text-xl sm:text-2xl font-bold text-[#3b82f6] mt-1">
               {myShifts.reduce((total, shift) => {
                 if (shift.startTime && shift.endTime) {
                   const [sh, sm] = shift.startTime.split(':').map(Number);

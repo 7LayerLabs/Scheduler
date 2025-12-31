@@ -160,12 +160,12 @@ export default function Sidebar({ activeTab, setActiveTab, userRole = 'manager',
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
                 ) : (
-                  <span className="text-[#0d0d0f] font-bold text-lg sm:text-xl">B</span>
+                  <span className="text-[#0d0d0f] font-bold text-lg sm:text-xl">T</span>
                 )}
               </div>
               <div>
-                <h1 className="font-bold text-white text-base sm:text-lg tracking-tight">Bobola&apos;s</h1>
-                <p className="text-xs text-[#6b6b75] font-medium">Schedule Manager</p>
+                <h1 className="font-bold text-white text-base sm:text-lg tracking-tight">Tempo</h1>
+                <p className="text-xs text-[#6b6b75] font-medium">Staff Scheduler</p>
               </div>
             </div>
             {/* Mobile close button */}

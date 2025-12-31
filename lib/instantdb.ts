@@ -56,6 +56,7 @@ export interface DBEmployee {
   phoneNumber?: string;
   bartendingScale: number;
   aloneScale: number;
+  valueRank?: number; // Scheduling priority: 1 = highest, higher = lower priority
   roleTags?: string; // JSON stringified string[]
   availability: string; // JSON stringified
   setSchedule?: string; // JSON stringified
@@ -287,6 +288,7 @@ function employeeToDBEmployee(emp: Employee): Omit<DBEmployee, 'id' | 'createdAt
     phoneNumber: emp.phoneNumber,
     bartendingScale: emp.bartendingScale,
     aloneScale: emp.aloneScale,
+    valueRank: emp.valueRank,
     roleTags: emp.roleTags ? JSON.stringify(emp.roleTags) : undefined,
     availability: JSON.stringify(emp.availability),
     setSchedule: emp.setSchedule ? JSON.stringify(emp.setSchedule) : undefined,
@@ -307,6 +309,7 @@ function dbEmployeeToEmployee(dbEmp: DBEmployee): Employee {
     phoneNumber: dbEmp.phoneNumber,
     bartendingScale: dbEmp.bartendingScale,
     aloneScale: dbEmp.aloneScale,
+    valueRank: dbEmp.valueRank,
     roleTags: dbEmp.roleTags ? JSON.parse(dbEmp.roleTags) : undefined,
     availability: JSON.parse(dbEmp.availability),
     setSchedule: dbEmp.setSchedule ? JSON.parse(dbEmp.setSchedule) : undefined,

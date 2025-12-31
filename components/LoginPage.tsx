@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signInWithEmail, verifyMagicCode } from '@/lib/instantdb';
 
 interface Props {
@@ -8,12 +8,42 @@ interface Props {
   logoUrl?: string | null;
 }
 
+// Keys for localStorage persistence (fixes mobile remount issue)
+const LOGIN_STEP_KEY = 'login_step';
+const LOGIN_EMAIL_KEY = 'login_email';
+
 export default function LoginPage({ onLoginSuccess, logoUrl }: Props) {
-  const [email, setEmail] = useState('');
+  // Initialize state from localStorage to persist across mobile remounts
+  const [email, setEmail] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(LOGIN_EMAIL_KEY) || '';
+    }
+    return '';
+  });
   const [code, setCode] = useState('');
-  const [step, setStep] = useState<'email' | 'code'>('email');
+  const [step, setStep] = useState<'email' | 'code'>(() => {
+    if (typeof window !== 'undefined') {
+      const savedStep = localStorage.getItem(LOGIN_STEP_KEY);
+      return savedStep === 'code' ? 'code' : 'email';
+    }
+    return 'email';
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Persist step and email to localStorage
+  useEffect(() => {
+    localStorage.setItem(LOGIN_STEP_KEY, step);
+    if (step === 'code') {
+      localStorage.setItem(LOGIN_EMAIL_KEY, email);
+    }
+  }, [step, email]);
+
+  // Clear stored login state on successful login
+  const clearStoredLoginState = () => {
+    localStorage.removeItem(LOGIN_STEP_KEY);
+    localStorage.removeItem(LOGIN_EMAIL_KEY);
+  };
 
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,6 +66,7 @@ export default function LoginPage({ onLoginSuccess, logoUrl }: Props) {
 
     const result = await verifyMagicCode(email, code);
     if (result.success) {
+      clearStoredLoginState();
       onLoginSuccess();
     } else {
       setError('Invalid code. Please try again.');
@@ -54,13 +85,13 @@ export default function LoginPage({ onLoginSuccess, logoUrl }: Props) {
             </div>
           ) : (
             <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-[#1a1a1f] border-2 border-[#2a2a32] flex items-center justify-center">
-              <span className="text-3xl">🍕</span>
+              <span className="text-3xl font-bold text-white">T</span>
             </div>
           )}
           <h1 className="text-4xl font-bold text-white">
-            Bobola<span className="text-[#e5a825]">&apos;</span>s
+            Tempo
           </h1>
-          <p className="text-[#6b6b75] mt-2">Staff Scheduler</p>
+          <p className="text-[#6b6b75] mt-2">for Bobola&apos;s</p>
         </div>
 
         {/* Login Card */}
@@ -133,6 +164,7 @@ export default function LoginPage({ onLoginSuccess, logoUrl }: Props) {
               <button
                 type="button"
                 onClick={() => {
+                  clearStoredLoginState();
                   setStep('email');
                   setCode('');
                   setError('');

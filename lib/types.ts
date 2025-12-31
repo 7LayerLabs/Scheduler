@@ -8,6 +8,9 @@ export interface Employee {
   phoneNumber?: string;
   bartendingScale: number; // 0-5
   aloneScale: number; // 0-5
+  // Value rank for scheduling priority (lower = more valuable, gets more shifts)
+  // 1 = most valuable, higher numbers = less priority
+  valueRank?: number;
   // Optional role tags that can influence assignment priorities.
   // Example: ["bar"] will prioritize the employee for Bar-labeled slots and count them as bartender coverage.
   roleTags?: string[];
