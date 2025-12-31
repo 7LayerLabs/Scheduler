@@ -50,11 +50,13 @@ interface Props {
   setWeekLockedRules?: (rules: ScheduleOverride[]) => void;
   weekLockedRulesDisplay?: string[];
   setWeekLockedRulesDisplay?: (display: string[]) => void;
+  setWeekLockedRulesAndDisplay?: (rules: ScheduleOverride[], display: string[]) => void;
   // Permanent rules (all weeks)
   permanentRules?: ScheduleOverride[];
   setPermanentRules?: (rules: ScheduleOverride[]) => void;
   permanentRulesDisplay?: string[];
   setPermanentRulesDisplay?: (display: string[]) => void;
+  setPermanentRulesAndDisplay?: (rules: ScheduleOverride[], display: string[]) => void;
   onArchiveSchedule?: () => void;
   onPublishSchedule?: () => void;
 }
@@ -79,10 +81,12 @@ export default function ScheduleView({
   setWeekLockedRules,
   weekLockedRulesDisplay,
   setWeekLockedRulesDisplay,
+  setWeekLockedRulesAndDisplay,
   permanentRules,
   setPermanentRules,
   permanentRulesDisplay,
   setPermanentRulesDisplay,
+  setPermanentRulesAndDisplay,
   onArchiveSchedule,
   onPublishSchedule,
 }: Props) {
@@ -421,35 +425,47 @@ export default function ScheduleView({
     }
   };
 
-  // Clear week rules
+  // Clear week rules - use combined setter to avoid closure issues
   const handleClearWeekRules = () => {
-    if (setWeekLockedRules && setWeekLockedRulesDisplay) {
+    if (setWeekLockedRulesAndDisplay) {
+      setWeekLockedRulesAndDisplay([], []);
+    } else if (setWeekLockedRules && setWeekLockedRulesDisplay) {
       setWeekLockedRules([]);
       setWeekLockedRulesDisplay([]);
     }
   };
 
-  // Clear permanent rules
+  // Clear permanent rules - use combined setter to avoid closure issues
   const handleClearPermanentRules = () => {
-    if (setPermanentRules && setPermanentRulesDisplay) {
+    if (setPermanentRulesAndDisplay) {
+      setPermanentRulesAndDisplay([], []);
+    } else if (setPermanentRules && setPermanentRulesDisplay) {
       setPermanentRules([]);
       setPermanentRulesDisplay([]);
     }
   };
 
-  // Remove single week rule
+  // Remove single week rule - use combined setter to avoid closure issues
   const handleRemoveWeekRule = (index: number) => {
-    if (setWeekLockedRules && setWeekLockedRulesDisplay) {
-      setWeekLockedRules(safeWeekLockedRules.filter((_, i) => i !== index));
-      setWeekLockedRulesDisplay(safeWeekLockedRulesDisplay.filter((_, i) => i !== index));
+    const newRules = safeWeekLockedRules.filter((_, i) => i !== index);
+    const newDisplay = safeWeekLockedRulesDisplay.filter((_, i) => i !== index);
+    if (setWeekLockedRulesAndDisplay) {
+      setWeekLockedRulesAndDisplay(newRules, newDisplay);
+    } else if (setWeekLockedRules && setWeekLockedRulesDisplay) {
+      setWeekLockedRules(newRules);
+      setWeekLockedRulesDisplay(newDisplay);
     }
   };
 
-  // Remove single permanent rule
+  // Remove single permanent rule - use combined setter to avoid closure issues
   const handleRemovePermanentRule = (index: number) => {
-    if (setPermanentRules && setPermanentRulesDisplay) {
-      setPermanentRules(safePermanentRules.filter((_, i) => i !== index));
-      setPermanentRulesDisplay(safePermanentRulesDisplay.filter((_, i) => i !== index));
+    const newRules = safePermanentRules.filter((_, i) => i !== index);
+    const newDisplay = safePermanentRulesDisplay.filter((_, i) => i !== index);
+    if (setPermanentRulesAndDisplay) {
+      setPermanentRulesAndDisplay(newRules, newDisplay);
+    } else if (setPermanentRules && setPermanentRulesDisplay) {
+      setPermanentRules(newRules);
+      setPermanentRulesDisplay(newDisplay);
     }
   };
 
