@@ -79,65 +79,66 @@ export default function EmployeeListItem({
         </div>
       </div>
 
-      {/* Desktop Table Row */}
-      <tr
-        key={emp.id}
-        className="hidden md:table-row cursor-pointer transition-colors"
-        style={{
-          opacity: isInactive ? 0.5 : 1,
-          backgroundColor: isSelected ? '#e5a825/10' : 'transparent'
-        }}
-        onClick={() => onSelect(emp)}
-      >
-        <td className="py-3 px-4">
-          <div className="flex items-center gap-3">
-            <div
-              className={`w-9 h-9 rounded-full flex items-center justify-center ${
-                isInactive ? 'bg-[#3a3a45]' : 'bg-[#a855f7]'
-              }`}
-            >
-              <span className="text-white font-medium text-sm">
-                {emp.name.charAt(0)}
-              </span>
-            </div>
-            <div>
-              <p className={`text-sm font-medium ${isInactive ? 'text-[#6b6b75]' : 'text-white'}`}>
-                {emp.name}
-                {isInactive && <span className="ml-2 text-xs text-[#ef4444]">(Inactive)</span>}
-              </p>
-              <p className="text-xs text-[#6b6b75]">
-                {emp.bartendingScale >= 4 ? 'Bartender' : 'Server'}
-              </p>
-            </div>
-          </div>
-        </td>
-        <td className="py-3 px-4 text-center">
-          <span className="text-sm">{getSkillStars(emp.bartendingScale)}</span>
-        </td>
-        <td className="py-3 px-4 text-center">
-          <span className="text-sm">{getSkillStars(emp.aloneScale)}</span>
-        </td>
-        <td className="py-3 px-4 text-center">
-          <span className="text-sm text-white">{emp.minShiftsPerWeek || '-'}</span>
-        </td>
-        <td className="py-3 px-4 text-right">
-          <div className="flex items-center justify-end gap-3">
-            <button
-              onClick={(e) => onToggleActive(emp, e)}
-              className={`relative w-10 h-5 rounded-full transition-colors ${
-                emp.isActive !== false ? 'bg-[#22c55e]' : 'bg-[#3a3a45]'
-              }`}
-              title={emp.isActive !== false ? 'Click to deactivate' : 'Click to activate'}
-            >
-              <span
-                className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-                  emp.isActive !== false ? 'left-5' : 'left-0.5'
+      {/* Desktop Table Row - only rendered in server/hydration context */}
+      {typeof document !== 'undefined' && (
+        <tr
+          className="hidden md:table-row cursor-pointer transition-colors"
+          style={{
+            opacity: isInactive ? 0.5 : 1,
+            backgroundColor: isSelected ? '#e5a825/10' : 'transparent'
+          }}
+          onClick={() => onSelect(emp)}
+        >
+          <td className="py-3 px-4">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-9 h-9 rounded-full flex items-center justify-center ${
+                  isInactive ? 'bg-[#3a3a45]' : 'bg-[#a855f7]'
                 }`}
-              />
-            </button>
-          </div>
-        </td>
-      </tr>
+              >
+                <span className="text-white font-medium text-sm">
+                  {emp.name.charAt(0)}
+                </span>
+              </div>
+              <div>
+                <p className={`text-sm font-medium ${isInactive ? 'text-[#6b6b75]' : 'text-white'}`}>
+                  {emp.name}
+                  {isInactive && <span className="ml-2 text-xs text-[#ef4444]">(Inactive)</span>}
+                </p>
+                <p className="text-xs text-[#6b6b75]">
+                  {emp.bartendingScale >= 4 ? 'Bartender' : 'Server'}
+                </p>
+              </div>
+            </div>
+          </td>
+          <td className="py-3 px-4 text-center">
+            <span className="text-sm">{getSkillStars(emp.bartendingScale)}</span>
+          </td>
+          <td className="py-3 px-4 text-center">
+            <span className="text-sm">{getSkillStars(emp.aloneScale)}</span>
+          </td>
+          <td className="py-3 px-4 text-center">
+            <span className="text-sm text-white">{emp.minShiftsPerWeek || '-'}</span>
+          </td>
+          <td className="py-3 px-4 text-right">
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={(e) => onToggleActive(emp, e)}
+                className={`relative w-10 h-5 rounded-full transition-colors ${
+                  emp.isActive !== false ? 'bg-[#22c55e]' : 'bg-[#3a3a45]'
+                }`}
+                title={emp.isActive !== false ? 'Click to deactivate' : 'Click to activate'}
+              >
+                <span
+                  className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                    emp.isActive !== false ? 'left-5' : 'left-0.5'
+                  }`}
+                />
+              </button>
+            </div>
+          </td>
+        </tr>
+      )}
     </>
   );
 }
