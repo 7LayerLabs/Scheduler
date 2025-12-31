@@ -392,6 +392,82 @@ export async function deleteNotification(notificationId: string) {
   await db.transact(tx.notifications[notificationId].delete());
 }
 
+// Employee Shift History & Preference Analysis
+export interface EmployeeShiftHistory {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  weekKey: string; // YYYY-Www format
+  shiftDate: string; // YYYY-MM-DD
+  shiftType: 'morning' | 'mid' | 'night';
+  startTime: string;
+  endTime: string;
+  durationHours: number;
+  dayOfWeek: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+  wasSwapped: boolean;
+  createdAt: number;
+}
+
+export interface EmployeePreferenceAnalysis {
+  id: string;
+  employeeId: string;
+  totalShiftsAnalyzed: number;
+  preferredShiftTypes: string; // JSON: { morning: 0.6, mid: 0.2, night: 0.2 }
+  preferredDays: string; // JSON: { monday: 0.15, tuesday: 0.2, ... }
+  avgShiftDuration: number;
+  avgHoursPerWeek: number;
+  swapRequestRate: number; // % of shifts that were swapped
+  confidenceScore: number; // 0-1 (based on data quantity)
+  lastUpdated: number;
+}
+
+export async function createShiftHistory(history: Omit<EmployeeShiftHistory, 'id' | 'createdAt'>) {
+  const historyId = id();
+  await db.transact(tx.employeeShiftHistory[historyId].update({
+    ...history,
+    createdAt: Date.now(),
+  }));
+  return historyId;
+}
+
+export function useEmployeeShiftHistory(employeeId: string) {
+  const { data, isLoading, error } = db.useQuery(
+    { employeeShiftHistory: { $: { where: { employeeId } } } }
+  );
+  return {
+    history: (data?.employeeShiftHistory || []) as EmployeeShiftHistory[],
+    isLoading,
+    error,
+  };
+}
+
+export async function savePreferenceAnalysis(analysis: Omit<EmployeePreferenceAnalysis, 'id'>) {
+  const analysisId = id();
+  await db.transact(tx.employeePreferenceAnalysis[analysisId].update({
+    ...analysis,
+  }));
+  return analysisId;
+}
+
+export function usePreferenceAnalysis(employeeId: string) {
+  const { data, isLoading, error } = db.useQuery(
+    { employeePreferenceAnalysis: { $: { where: { employeeId } } } }
+  );
+  const analysis = (data?.employeePreferenceAnalysis || []) as EmployeePreferenceAnalysis[];
+  return {
+    analysis: analysis[0] || null,
+    isLoading,
+    error,
+  };
+}
+
+export async function updatePreferenceAnalysis(
+  analysisId: string,
+  analysis: Partial<Omit<EmployeePreferenceAnalysis, 'id'>>
+) {
+  await db.transact(tx.employeePreferenceAnalysis[analysisId].update(analysis));
+}
+
 // Schedule persistence functions
 export async function saveSchedule(schedule: Omit<SavedSchedule, 'id'>) {
   const scheduleId = id();
