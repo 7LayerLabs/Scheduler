@@ -31,14 +31,27 @@ export interface ShiftSwapRequest {
   id: string;
   requesterId: string;
   requesterName: string;
-  targetEmployeeId: string;
-  targetEmployeeName: string;
+  targetEmployeeId?: string; // Optional: specific person or "anyone"
+  targetEmployeeName?: string;
   shiftDate: string;
   shiftType: 'morning' | 'mid' | 'night';
-  status: 'pending' | 'approved' | 'denied';
+  startTime?: string;
+  endTime?: string;
+  reason?: string;
+  status: 'pending' | 'approved' | 'denied' | 'cancelled';
   createdAt: number;
   reviewedAt?: number;
   reviewedBy?: string;
+  reviewNotes?: string;
+}
+
+export interface ShiftSwapOffer {
+  id: string;
+  swapRequestId: string;
+  offeredByEmployeeId: string;
+  offeredByEmployeeName: string;
+  status: 'pending' | 'selected' | 'rejected';
+  createdAt: number;
 }
 
 export interface Notification {
@@ -263,18 +276,59 @@ export function useShiftSwapRequests(requesterId?: string) {
   return { requests: (data?.shiftSwapRequests || []) as ShiftSwapRequest[], isLoading, error };
 }
 
+export function useAllShiftSwapRequests() {
+  const { data, isLoading, error } = db.useQuery({ shiftSwapRequests: {} });
+  return { requests: (data?.shiftSwapRequests || []) as ShiftSwapRequest[], isLoading, error };
+}
+
 export async function updateShiftSwapRequestStatus(
   requestId: string,
-  status: 'approved' | 'denied',
-  reviewedBy: string
+  status: 'approved' | 'denied' | 'cancelled',
+  reviewedBy: string,
+  reviewNotes?: string
 ) {
   await db.transact(
     tx.shiftSwapRequests[requestId].update({
       status,
       reviewedAt: Date.now(),
       reviewedBy,
+      ...(reviewNotes && { reviewNotes }),
     })
   );
+}
+
+// Shift Swap Offer functions
+export async function createShiftSwapOffer(offer: Omit<ShiftSwapOffer, 'id' | 'createdAt'>) {
+  const offerId = id();
+  await db.transact(
+    tx.shiftSwapOffers[offerId].update({
+      ...offer,
+      createdAt: Date.now(),
+    })
+  );
+  return offerId;
+}
+
+export function useShiftSwapOffers(swapRequestId?: string) {
+  const query = swapRequestId
+    ? { shiftSwapOffers: { $: { where: { swapRequestId } } } }
+    : { shiftSwapOffers: {} };
+
+  const { data, isLoading, error } = db.useQuery(query);
+  return { offers: (data?.shiftSwapOffers || []) as ShiftSwapOffer[], isLoading, error };
+}
+
+export async function updateShiftSwapOfferStatus(
+  offerId: string,
+  status: 'selected' | 'rejected'
+) {
+  await db.transact(
+    tx.shiftSwapOffers[offerId].update({ status })
+  );
+}
+
+export async function deleteShiftSwapOffer(offerId: string) {
+  await db.transact(tx.shiftSwapOffers[offerId].delete());
 }
 
 // Notification functions
