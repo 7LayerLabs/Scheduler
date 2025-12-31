@@ -376,6 +376,8 @@ export default function NotesAndStaffingView({
               {localNotes.trim() && (
                 <button
                   onClick={() => {
+                    // Set flag BEFORE clearing to prevent useEffect from re-syncing old value
+                    justClearedRef.current = true;
                     setLocalNotes('');
                     setNotes('');
                   }}
