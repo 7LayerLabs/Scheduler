@@ -849,10 +849,8 @@ export function useWeeklyRules() {
 
 // Update rules for a specific week
 export async function updateWeeklyRulesForWeek(weekKey: string, rules: ScheduleOverride[], rulesDisplay: string[]) {
-  // Query for existing record first
-  const result = await db.queryOnce({ weeklyRules: { $: { where: { weekKey } } } });
-  const existing = result.data?.weeklyRules?.[0] as { id: string } | undefined;
-  const rulesId = existing?.id || id();
+  // Always generate a consistent ID based on weekKey so queries can find it
+  const rulesId = `weekly-rules-${weekKey}`;
 
   await db.transact(
     tx.weeklyRules[rulesId].update({
