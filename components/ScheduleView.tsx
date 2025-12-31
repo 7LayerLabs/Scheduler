@@ -122,8 +122,13 @@ export default function ScheduleView({
 
   // Handle notes change - update both local state and DB
   const handleNotesChange = (newNotes: string) => {
-    setLocalNotes(newNotes);
-    setNotes(newNotes);
+    // If clearing notes, use the protected clear function to prevent DB re-sync issues
+    if (newNotes === '') {
+      clearWeekNotesInput();
+    } else {
+      setLocalNotes(newNotes);
+      setNotes(newNotes);
+    }
   };
 
   // Derive parsed preview and rules from localNotes using useMemo (no setState in effects)
