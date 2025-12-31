@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { Employee, Availability, DayAvailability, EmployeeRestriction, PermanentRule, DayOfWeek } from '@/lib/types';
 import EmployeeRoleToggle from '@/components/EmployeeRoleToggle';
+import EmployeeListItem from '@/components/team/EmployeeListItem';
+import EmployeeEditForm from '@/components/team/EmployeeEditForm';
 
 interface Props {
   employees: Employee[];
@@ -113,61 +115,6 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
     }
   };
 
-  const getShiftTypesForDay = (day: DayKey): ShiftType[] => {
-    if (!editAvailability) return [];
-    const dayAvail = editAvailability[day] as DayAvailability | null;
-    if (!dayAvail || !dayAvail.available) return [];
-    return dayAvail.shifts.map(s => s.type as ShiftType);
-  };
-
-  const hasShiftType = (day: DayKey, shiftType: ShiftType): boolean => {
-    const types = getShiftTypesForDay(day);
-    return types.includes(shiftType);
-  };
-
-  const toggleShiftTypeForDay = (day: DayKey, shiftType: ShiftType) => {
-    if (!editAvailability) return;
-
-    const newAvail = { ...editAvailability };
-    const currentDayAvail = editAvailability[day] as DayAvailability | null;
-    const currentShifts = currentDayAvail?.shifts || [];
-
-    const hasShift = currentShifts.some(s => s.type === shiftType);
-
-    let newShifts;
-    if (hasShift) {
-      // Remove this shift type
-      newShifts = currentShifts.filter(s => s.type !== shiftType);
-    } else {
-      // Add this shift type
-      // IMPORTANT: 'any' (Open) and specific types (morning/mid/night) are mutually exclusive
-      if (shiftType === 'any') {
-        // Selecting 'any' replaces all specific types
-        newShifts = [{ type: 'any' as const }];
-      } else {
-        // Selecting a specific type removes 'any' first
-        const withoutAny = currentShifts.filter(s => s.type !== 'any');
-        if (shiftType === 'bar') {
-          // Bar Shift and Dinner (night) are mutually exclusive
-          const withoutNight = withoutAny.filter(s => s.type !== 'night');
-          newShifts = [...withoutNight, { type: 'bar' as const, startTime: '16:00' }];
-        } else {
-          // Dinner (night) and Bar Shift are mutually exclusive
-          const withoutBar = shiftType === 'night' ? withoutAny.filter(s => s.type !== 'bar') : withoutAny;
-          newShifts = [...withoutBar, { type: shiftType as 'morning' | 'mid' | 'night' }];
-        }
-      }
-    }
-
-    newAvail[day] = {
-      available: newShifts.length > 0,
-      shifts: newShifts,
-      notes: currentDayAvail?.notes
-    };
-
-    setEditAvailability(newAvail);
-  };
-
   const saveChanges = () => {
     if (selectedEmployee && editAvailability) {
       const updatedEmployee: Employee = {
@@ -188,81 +135,6 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
     }
   };
 
-  // Restriction management functions
-  const addRestriction = () => {
-    const newRestriction: EmployeeRestriction = {
-      id: `restriction-${Date.now()}`,
-      type: 'no_before',
-      time: '09:00',
-      days: [],
-      reason: '',
-    };
-    setEditRestrictions([...editRestrictions, newRestriction]);
-  };
-
-  const updateRestriction = (id: string, updates: Partial<EmployeeRestriction>) => {
-    setEditRestrictions(editRestrictions.map(r =>
-      r.id === id ? { ...r, ...updates } : r
-    ));
-  };
-
-  const removeRestriction = (id: string) => {
-    setEditRestrictions(editRestrictions.filter(r => r.id !== id));
-  };
-
-  const toggleRestrictionDay = (restrictionId: string, day: DayOfWeek) => {
-    setEditRestrictions(editRestrictions.map(r => {
-      if (r.id !== restrictionId) return r;
-      const days = r.days.includes(day)
-        ? r.days.filter(d => d !== day)
-        : [...r.days, day];
-      return { ...r, days };
-    }));
-  };
-
-  // Permanent rule management functions
-  const addPermanentRule = () => {
-    const newRule: PermanentRule = {
-      id: `rule-${Date.now()}`,
-      type: 'fixed_shift',
-      day: 'saturday',
-      days: ['saturday'],  // Initialize with single day for fixed_shift
-      startTime: '09:00',
-      endTime: '12:00',
-      reason: '',
-      isActive: true,
-    };
-    setEditPermanentRules([...editPermanentRules, newRule]);
-  };
-
-  const updatePermanentRule = (id: string, updates: Partial<PermanentRule>) => {
-    setEditPermanentRules(editPermanentRules.map(r =>
-      r.id === id ? { ...r, ...updates } : r
-    ));
-  };
-
-  const removePermanentRule = (id: string) => {
-    setEditPermanentRules(editPermanentRules.filter(r => r.id !== id));
-  };
-
-  const togglePermanentRuleActive = (id: string) => {
-    setEditPermanentRules(editPermanentRules.map(r =>
-      r.id === id ? { ...r, isActive: !r.isActive } : r
-    ));
-  };
-
-  const togglePermanentRuleDay = (ruleId: string, day: DayOfWeek) => {
-    setEditPermanentRules(editPermanentRules.map(r => {
-      if (r.id !== ruleId) return r;
-      const currentDays = r.days || [r.day];
-      const newDays = currentDays.includes(day)
-        ? currentDays.filter(d => d !== day)
-        : [...currentDays, day];
-      // Ensure at least one day is selected
-      if (newDays.length === 0) return r;
-      return { ...r, days: newDays, day: newDays[0] };
-    }));
-  };
 
   const cancelEditing = () => {
     setIsEditing(false);
@@ -353,59 +225,19 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
           {/* Mobile Card View */}
           <div className="md:hidden divide-y divide-[#2a2a32]">
             {filteredEmployees.map((emp) => (
-              <div
+              <EmployeeListItem
                 key={emp.id}
-                onClick={() => {
-                  setSelectedEmployee(emp);
+                employee={emp}
+                isSelected={selectedEmployee?.id === emp.id}
+                onSelect={(employee) => {
+                  setSelectedEmployee(employee);
                   setIsEditing(false);
                 }}
-                className={`p-4 cursor-pointer transition-colors ${
-                  emp.isActive === false ? 'opacity-50' : ''
-                } ${selectedEmployee?.id === emp.id
-                  ? 'bg-[#e5a825]/10'
-                  : 'hover:bg-[#222228]'
-                  }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      emp.isActive === false ? 'bg-[#3a3a45]' : 'bg-[#a855f7]'
-                    }`}>
-                      <span className="text-white font-medium text-sm">
-                        {emp.name.charAt(0)}
-                      </span>
-                    </div>
-                    <div>
-                      <p className={`text-sm font-medium ${emp.isActive === false ? 'text-[#6b6b75]' : 'text-white'}`}>
-                        {emp.name}
-                        {emp.isActive === false && <span className="ml-2 text-xs text-[#ef4444]">(Inactive)</span>}
-                      </p>
-                      <p className="text-xs text-[#6b6b75]">
-                        {emp.bartendingScale >= 4 ? 'Bartender' : 'Server'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {/* Active/Inactive Toggle */}
-                    <button
-                      onClick={(e) => toggleActiveStatus(emp, e)}
-                      className={`relative w-10 h-5 rounded-full transition-colors ${
-                        emp.isActive !== false ? 'bg-[#22c55e]' : 'bg-[#3a3a45]'
-                      }`}
-                      title={emp.isActive !== false ? 'Click to deactivate' : 'Click to activate'}
-                    >
-                      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-                        emp.isActive !== false ? 'left-5' : 'left-0.5'
-                      }`} />
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-2 flex items-center gap-4 text-xs text-[#6b6b75]">
-                  <span>Bar: {getSkillStars(emp.bartendingScale)}</span>
-                  <span>Solo: {getSkillStars(emp.aloneScale)}</span>
-                  {emp.minShiftsPerWeek && <span>Min: {emp.minShiftsPerWeek}</span>}
-                </div>
-              </div>
+                onToggleActive={(employee, e) => {
+                  e.stopPropagation();
+                  toggleActiveStatus(employee, e);
+                }}
+              />
             ))}
           </div>
 
@@ -463,65 +295,19 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
               </thead>
               <tbody className="divide-y divide-[#2a2a32]">
                 {filteredEmployees.map((emp) => (
-                  <tr
+                  <EmployeeListItem
                     key={emp.id}
-                    onClick={() => {
-                      setSelectedEmployee(emp);
+                    employee={emp}
+                    isSelected={selectedEmployee?.id === emp.id}
+                    onSelect={(employee) => {
+                      setSelectedEmployee(employee);
                       setIsEditing(false);
                     }}
-                    className={`cursor-pointer transition-colors ${
-                      emp.isActive === false ? 'opacity-50' : ''
-                    } ${selectedEmployee?.id === emp.id
-                      ? 'bg-[#e5a825]/10'
-                      : 'hover:bg-[#222228]'
-                      }`}
-                  >
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-full flex items-center justify-center ${
-                          emp.isActive === false ? 'bg-[#3a3a45]' : 'bg-[#a855f7]'
-                        }`}>
-                          <span className="text-white font-medium text-sm">
-                            {emp.name.charAt(0)}
-                          </span>
-                        </div>
-                        <div>
-                          <p className={`text-sm font-medium ${emp.isActive === false ? 'text-[#6b6b75]' : 'text-white'}`}>
-                            {emp.name}
-                            {emp.isActive === false && <span className="ml-2 text-xs text-[#ef4444]">(Inactive)</span>}
-                          </p>
-                          <p className="text-xs text-[#6b6b75]">
-                            {emp.bartendingScale >= 4 ? 'Bartender' : 'Server'}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <span className="text-sm">{getSkillStars(emp.bartendingScale)}</span>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <span className="text-sm">{getSkillStars(emp.aloneScale)}</span>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <span className="text-sm text-white">{emp.minShiftsPerWeek || '-'}</span>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-3">
-                        {/* Active/Inactive Toggle */}
-                        <button
-                          onClick={(e) => toggleActiveStatus(emp, e)}
-                          className={`relative w-10 h-5 rounded-full transition-colors ${
-                            emp.isActive !== false ? 'bg-[#22c55e]' : 'bg-[#3a3a45]'
-                          }`}
-                          title={emp.isActive !== false ? 'Click to deactivate' : 'Click to activate'}
-                        >
-                          <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-                            emp.isActive !== false ? 'left-5' : 'left-0.5'
-                          }`} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                    onToggleActive={(employee, e) => {
+                      e.stopPropagation();
+                      toggleActiveStatus(employee, e);
+                    }}
+                  />
                 ))}
               </tbody>
             </table>
@@ -771,156 +557,29 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                 </div>
               )}
 
-              {/* Availability - Edit Mode */}
+              {/* Edit Form Section */}
               {isEditing && editAvailability && (
-                <div className="mb-6">
-                  <h4 className="text-sm font-medium text-white mb-3">Weekly Availability</h4>
-                  <div className="space-y-2">
-                    {dayLabels.map(({ key, label }) => {
-                      const isSunday = key === 'sunday';
-
-                      const shiftOptions: { label: string; type: 'any' | 'morning' | 'mid' | 'night' | 'bar' }[] = [
-                        { label: 'Open', type: 'any' },
-                        { label: 'Morning', type: 'morning' },
-                        { label: 'Mid', type: 'mid' },
-                        ...(isSunday ? [] : [
-                          { label: 'Dinner', type: 'night' as const },
-                          { label: 'Bar Shift', type: 'bar' as const },
-                        ])
-                      ];
-
-                      return (
-                        <div key={key} className="flex items-center gap-2">
-                          <span className="w-10 text-xs font-medium text-[#6b6b75]">{label}</span>
-                          <div className="flex gap-1">
-                            {shiftOptions.map(({ label: shiftLabel, type }) => {
-                              const isSelected = hasShiftType(key, type);
-                              return (
-                                <button
-                                  key={type}
-                                  type="button"
-                                  onClick={() => toggleShiftTypeForDay(key, type)}
-                                  className={`px-2 py-1 text-xs rounded-md font-medium transition-colors ${isSelected
-                                      ? 'bg-[#e5a825] text-[#0d0d0f]'
-                                      : 'bg-[#2a2a32] text-[#6b6b75] hover:bg-[#3a3a45]'
-                                    }`}
-                                >
-                                  {shiftLabel}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                <EmployeeEditForm
+                  name={editName}
+                  phoneNumber={editPhoneNumber}
+                  bartending={editBartending}
+                  alone={editAlone}
+                  minShifts={editMinShifts}
+                  availability={editAvailability}
+                  restrictions={editRestrictions}
+                  permanentRules={editPermanentRules}
+                  onNameChange={setEditName}
+                  onPhoneChange={setEditPhoneNumber}
+                  onBartendingChange={setEditBartending}
+                  onAloneChange={setEditAlone}
+                  onMinShiftsChange={setEditMinShifts}
+                  onAvailabilityChange={setEditAvailability}
+                  onRestrictionsChange={setEditRestrictions}
+                  onPermanentRulesChange={setEditPermanentRules}
+                />
               )}
 
-              {/* Restrictions - Edit Mode */}
-              {isEditing && (
-                <div className="mb-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-medium text-white">Time Restrictions</h4>
-                    <button
-                      type="button"
-                      onClick={addRestriction}
-                      className="text-xs text-[#e5a825] hover:text-[#f0b429] font-medium"
-                    >
-                      + Add Restriction
-                    </button>
-                  </div>
-                  {editRestrictions.length === 0 && (
-                    <p className="text-xs text-[#6b6b75]">No restrictions set</p>
-                  )}
-                  <div className="space-y-3">
-                    {editRestrictions.map((r) => (
-                      <div key={r.id} className="p-3 bg-[#141417] rounded-lg border border-[#2a2a32]">
-                        {/* Restriction Type */}
-                        <div className="flex items-center gap-2 mb-2">
-                          <select
-                            value={r.type}
-                            onChange={(e) => updateRestriction(r.id, { type: e.target.value as EmployeeRestriction['type'] })}
-                            className="flex-1 px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#e5a825]/40"
-                          >
-                            <option value="no_before">Cannot start before</option>
-                            <option value="no_after">Must finish by</option>
-                            <option value="unavailable_range">Unavailable range</option>
-                          </select>
-                          <button
-                            type="button"
-                            onClick={() => removeRestriction(r.id)}
-                            className="p-1 text-[#ef4444] hover:bg-[#ef4444]/10 rounded"
-                          >
-                            <TrashIcon className="w-4 h-4" />
-                          </button>
-                        </div>
-
-                        {/* Time Input(s) */}
-                        {(r.type === 'no_before' || r.type === 'no_after') && (
-                          <div className="mb-2">
-                            <input
-                              type="time"
-                              value={r.time || ''}
-                              onChange={(e) => updateRestriction(r.id, { time: e.target.value })}
-                              className="w-full px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#e5a825]/40"
-                            />
-                          </div>
-                        )}
-                        {r.type === 'unavailable_range' && (
-                          <div className="flex items-center gap-2 mb-2">
-                            <input
-                              type="time"
-                              value={r.startTime || ''}
-                              onChange={(e) => updateRestriction(r.id, { startTime: e.target.value })}
-                              className="flex-1 px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#e5a825]/40"
-                            />
-                            <span className="text-xs text-[#6b6b75]">to</span>
-                            <input
-                              type="time"
-                              value={r.endTime || ''}
-                              onChange={(e) => updateRestriction(r.id, { endTime: e.target.value })}
-                              className="flex-1 px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#e5a825]/40"
-                            />
-                          </div>
-                        )}
-
-                        {/* Days Selection */}
-                        <div className="mb-2">
-                          <div className="text-xs text-[#6b6b75] mb-1">Applies to (leave empty for all days):</div>
-                          <div className="flex flex-wrap gap-1">
-                            {(['tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as DayOfWeek[]).map((day) => (
-                              <button
-                                key={day}
-                                type="button"
-                                onClick={() => toggleRestrictionDay(r.id, day)}
-                                className={`px-2 py-0.5 text-xs rounded font-medium transition-colors ${
-                                  r.days.includes(day)
-                                    ? 'bg-[#ef4444] text-white'
-                                    : 'bg-[#2a2a32] text-[#6b6b75] hover:bg-[#3a3a45]'
-                                }`}
-                              >
-                                {day.charAt(0).toUpperCase() + day.slice(0, 2)}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Reason */}
-                        <input
-                          type="text"
-                          placeholder="Reason (optional)"
-                          value={r.reason || ''}
-                          onChange={(e) => updateRestriction(r.id, { reason: e.target.value })}
-                          className="w-full px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#e5a825]/40 placeholder:text-[#6b6b75]"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Permanent Rules - View Mode */}
+              {/* Permanent Rules - View Mode (non-edit) */}
               {!isEditing && (
                 <div className="mb-6">
                   <h4 className="text-sm font-medium text-white mb-2">Permanent Rules</h4>
@@ -947,136 +606,6 @@ export default function TeamView({ employees, onUpdateEmployee, onAddEmployee, o
                       })}
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* Permanent Rules - Edit Mode */}
-              {isEditing && (
-                <div className="mb-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-medium text-white">Permanent Rules</h4>
-                    <button
-                      type="button"
-                      onClick={addPermanentRule}
-                      className="text-xs text-[#22c55e] hover:text-[#4ade80] font-medium"
-                    >
-                      + Add Rule
-                    </button>
-                  </div>
-                  <p className="text-xs text-[#6b6b75] mb-3">
-                    Set fixed recurring schedules (e.g., &quot;Only works Saturday 9am-12pm&quot;)
-                  </p>
-                  {editPermanentRules.length === 0 && (
-                    <p className="text-xs text-[#6b6b75]">No permanent rules set</p>
-                  )}
-                  <div className="space-y-3">
-                    {editPermanentRules.map((r) => (
-                      <div key={r.id} className={`p-3 bg-[#141417] rounded-lg border ${r.isActive ? 'border-[#22c55e]/30' : 'border-[#3a3a45] opacity-50'}`}>
-                        {/* Rule Header with Toggle and Delete */}
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => togglePermanentRuleActive(r.id)}
-                              className={`relative w-8 h-4 rounded-full transition-colors ${
-                                r.isActive ? 'bg-[#22c55e]' : 'bg-[#3a3a45]'
-                              }`}
-                              title={r.isActive ? 'Click to disable' : 'Click to enable'}
-                            >
-                              <span className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
-                                r.isActive ? 'left-4' : 'left-0.5'
-                              }`} />
-                            </button>
-                            <span className="text-xs text-[#6b6b75]">{r.isActive ? 'Active' : 'Inactive'}</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removePermanentRule(r.id)}
-                            className="p-1 text-[#ef4444] hover:bg-[#ef4444]/10 rounded"
-                          >
-                            <TrashIcon className="w-4 h-4" />
-                          </button>
-                        </div>
-
-                        {/* Rule Type */}
-                        <div className="mb-2">
-                          <select
-                            value={r.type}
-                            onChange={(e) => updatePermanentRule(r.id, { type: e.target.value as PermanentRule['type'] })}
-                            className="w-full px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#22c55e]/40"
-                          >
-                            <option value="fixed_shift">Fixed Shift (always schedule this time)</option>
-                            <option value="only_available">Only Available (can ONLY work this time)</option>
-                            <option value="never_schedule">Never Schedule (never work this day)</option>
-                          </select>
-                        </div>
-
-                        {/* Day Selection - Multi-select for fixed_shift, single for others */}
-                        <div className="mb-2">
-                          <div className="text-xs text-[#6b6b75] mb-1">
-                            {r.type === 'fixed_shift' ? 'Days (select multiple):' : 'Day:'}
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            {(['tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as DayOfWeek[]).map((day) => {
-                              // For fixed_shift, use multi-select with days array
-                              const isSelected = r.type === 'fixed_shift'
-                                ? (r.days || [r.day]).includes(day)
-                                : r.day === day;
-
-                              return (
-                                <button
-                                  key={day}
-                                  type="button"
-                                  onClick={() => {
-                                    if (r.type === 'fixed_shift') {
-                                      togglePermanentRuleDay(r.id, day);
-                                    } else {
-                                      updatePermanentRule(r.id, { day });
-                                    }
-                                  }}
-                                  className={`px-2 py-0.5 text-xs rounded font-medium transition-colors ${
-                                    isSelected
-                                      ? 'bg-[#22c55e] text-white'
-                                      : 'bg-[#2a2a32] text-[#6b6b75] hover:bg-[#3a3a45]'
-                                  }`}
-                                >
-                                  {day.charAt(0).toUpperCase() + day.slice(1, 3)}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Time Range (for fixed_shift and only_available) */}
-                        {r.type !== 'never_schedule' && (
-                          <div className="flex items-center gap-2 mb-2">
-                            <input
-                              type="time"
-                              value={r.startTime || ''}
-                              onChange={(e) => updatePermanentRule(r.id, { startTime: e.target.value })}
-                              className="flex-1 px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#22c55e]/40"
-                            />
-                            <span className="text-xs text-[#6b6b75]">to</span>
-                            <input
-                              type="time"
-                              value={r.endTime || ''}
-                              onChange={(e) => updatePermanentRule(r.id, { endTime: e.target.value })}
-                              className="flex-1 px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#22c55e]/40"
-                            />
-                          </div>
-                        )}
-
-                        {/* Reason */}
-                        <input
-                          type="text"
-                          placeholder="Reason (e.g., Second job, School)"
-                          value={r.reason || ''}
-                          onChange={(e) => updatePermanentRule(r.id, { reason: e.target.value })}
-                          className="w-full px-2 py-1 bg-[#0d0d0f] border border-[#2a2a32] rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#22c55e]/40 placeholder:text-[#6b6b75]"
-                        />
-                      </div>
-                    ))}
-                  </div>
                 </div>
               )}
 
