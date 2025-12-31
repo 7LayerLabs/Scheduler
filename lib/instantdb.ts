@@ -839,7 +839,13 @@ export function useWeeklyRules() {
   const rulesByWeek: Record<string, ScheduleOverride[]> = {};
   const displayByWeek: Record<string, string[]> = {};
 
-  for (const item of ((data?.weeklyRules || []) as DBWeeklyRules[])) {
+  const items = (data?.weeklyRules || []) as DBWeeklyRules[];
+
+  if (items.length > 0) {
+    console.log(`[Rules Hook] Found ${items.length} weekly rule documents:`, items.map(i => ({ id: (i as any).id, weekKey: i.weekKey, displayCount: i.rulesDisplay ? JSON.parse(i.rulesDisplay).length : 0 })));
+  }
+
+  for (const item of items) {
     try {
       // Parse with fallback for empty/invalid data
       const rules = item.rules ? JSON.parse(item.rules) : [];
@@ -847,9 +853,11 @@ export function useWeeklyRules() {
 
       rulesByWeek[item.weekKey] = Array.isArray(rules) ? rules : [];
       displayByWeek[item.weekKey] = Array.isArray(display) ? display : [];
+
+      console.log(`[Rules Hook] Parsed ${item.weekKey}: ${display.length} rules`);
     } catch (e) {
       // If parsing fails, initialize as empty
-      console.warn(`Failed to parse rules for ${item.weekKey}:`, e);
+      console.warn(`[Rules Hook] Failed to parse rules for ${item.weekKey}:`, e);
       rulesByWeek[item.weekKey] = [];
       displayByWeek[item.weekKey] = [];
     }
@@ -863,22 +871,34 @@ export async function updateWeeklyRulesForWeek(weekKey: string, rules: ScheduleO
   // Always generate a consistent ID based on weekKey so queries can find it
   const rulesId = `weekly-rules-${weekKey}`;
 
-  console.log(`[Rules] Saving ${rulesDisplay.length} rules for week ${weekKey}`);
+  console.log(`[Rules] Saving ${rulesDisplay.length} rules for week ${weekKey}`, { rulesId, weekKey });
 
-  await db.transact(
-    tx.weeklyRules[rulesId].update({
-      weekKey,
-      rules: JSON.stringify(rules),
-      rulesDisplay: JSON.stringify(rulesDisplay),
-      updatedAt: Date.now(),
-    })
-  );
+  const data = {
+    weekKey,
+    rules: JSON.stringify(rules),
+    rulesDisplay: JSON.stringify(rulesDisplay),
+    updatedAt: Date.now(),
+  };
 
-  // Give InstantDB subscription time to propagate the change
-  // Increased to 200ms for more reliable propagation
-  await new Promise(resolve => setTimeout(resolve, 200));
+  try {
+    // First, try to query if it exists
+    const result = await db.queryOnce({ weeklyRules: { $: { where: { weekKey } } } });
+    const exists = result.data?.weeklyRules?.[0];
 
-  console.log(`[Rules] Saved ${rulesDisplay.length} rules for week ${weekKey}`);
+    console.log(`[Rules] Document exists for ${weekKey}:`, !!exists);
+
+    // Use update (works for both create and update with InstantDB)
+    await db.transact(tx.weeklyRules[rulesId].update(data));
+
+    // Give InstantDB subscription time to propagate the change
+    // Increased to 300ms for reliable propagation
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    console.log(`[Rules] ✅ Saved ${rulesDisplay.length} rules for week ${weekKey}`);
+  } catch (error) {
+    console.error(`[Rules] ❌ Failed to save rules for ${weekKey}:`, error);
+    throw error;
+  }
 }
 
 // ============================================
