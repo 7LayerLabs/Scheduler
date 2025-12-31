@@ -129,16 +129,18 @@ export default function NotesAndStaffingView({
   }, [permanentRules, weekLockedRules]);
 
   // Apply rules for THIS WEEK ONLY
-  const handleApplyWeekRules = () => {
+  const handleApplyWeekRules = async () => {
     if (parsedRules.length > 0) {
       const newRules = [...weekLockedRules, ...parsedRules];
       const newDisplay = [...weekLockedRulesDisplay, ...parsedPreview];
       // Use combined setter to avoid race condition, fall back to individual setters
       if (setWeekLockedRulesAndDisplay) {
-        setWeekLockedRulesAndDisplay(newRules, newDisplay);
+        await setWeekLockedRulesAndDisplay(newRules, newDisplay);
       } else {
-        setWeekLockedRules(newRules);
-        setWeekLockedRulesDisplay(newDisplay);
+        // If combined setter not available, still need to await both
+        const p1 = setWeekLockedRules(newRules);
+        const p2 = setWeekLockedRulesDisplay(newDisplay);
+        await Promise.all([p1, p2]);
       }
       // Clear input after applying - set flag to prevent re-sync from DB
       justClearedRef.current = true;
@@ -148,16 +150,18 @@ export default function NotesAndStaffingView({
   };
 
   // Apply rules PERMANENTLY (all weeks)
-  const handleApplyPermanentRules = () => {
+  const handleApplyPermanentRules = async () => {
     if (parsedRules.length > 0) {
       const newRules = [...permanentRules, ...parsedRules];
       const newDisplay = [...permanentRulesDisplay, ...parsedPreview];
       // Use combined setter to avoid race condition, fall back to individual setters
       if (setPermanentRulesAndDisplay) {
-        setPermanentRulesAndDisplay(newRules, newDisplay);
+        await setPermanentRulesAndDisplay(newRules, newDisplay);
       } else {
-        setPermanentRules(newRules);
-        setPermanentRulesDisplay(newDisplay);
+        // If combined setter not available, still need to await both
+        const p1 = setPermanentRules(newRules);
+        const p2 = setPermanentRulesDisplay(newDisplay);
+        await Promise.all([p1, p2]);
       }
       // Clear input after applying - set flag to prevent re-sync from DB
       justClearedRef.current = true;
@@ -167,46 +171,50 @@ export default function NotesAndStaffingView({
   };
 
   // Clear week-specific rules
-  const handleClearWeekRules = () => {
+  const handleClearWeekRules = async () => {
     if (setWeekLockedRulesAndDisplay) {
-      setWeekLockedRulesAndDisplay([], []);
+      await setWeekLockedRulesAndDisplay([], []);
     } else {
-      setWeekLockedRules([]);
-      setWeekLockedRulesDisplay([]);
+      const p1 = setWeekLockedRules([]);
+      const p2 = setWeekLockedRulesDisplay([]);
+      await Promise.all([p1, p2]);
     }
   };
 
   // Clear permanent rules
-  const handleClearPermanentRules = () => {
+  const handleClearPermanentRules = async () => {
     if (setPermanentRulesAndDisplay) {
-      setPermanentRulesAndDisplay([], []);
+      await setPermanentRulesAndDisplay([], []);
     } else {
-      setPermanentRules([]);
-      setPermanentRulesDisplay([]);
+      const p1 = setPermanentRules([]);
+      const p2 = setPermanentRulesDisplay([]);
+      await Promise.all([p1, p2]);
     }
   };
 
   // Remove single permanent rule
-  const handleRemovePermanentRule = (index: number) => {
+  const handleRemovePermanentRule = async (index: number) => {
     const newRules = permanentRules.filter((_, i) => i !== index);
     const newDisplay = permanentRulesDisplay.filter((_, i) => i !== index);
     if (setPermanentRulesAndDisplay) {
-      setPermanentRulesAndDisplay(newRules, newDisplay);
+      await setPermanentRulesAndDisplay(newRules, newDisplay);
     } else {
-      setPermanentRules(newRules);
-      setPermanentRulesDisplay(newDisplay);
+      const p1 = setPermanentRules(newRules);
+      const p2 = setPermanentRulesDisplay(newDisplay);
+      await Promise.all([p1, p2]);
     }
   };
 
   // Remove single week rule
-  const handleRemoveWeekRule = (index: number) => {
+  const handleRemoveWeekRule = async (index: number) => {
     const newRules = weekLockedRules.filter((_, i) => i !== index);
     const newDisplay = weekLockedRulesDisplay.filter((_, i) => i !== index);
     if (setWeekLockedRulesAndDisplay) {
-      setWeekLockedRulesAndDisplay(newRules, newDisplay);
+      await setWeekLockedRulesAndDisplay(newRules, newDisplay);
     } else {
-      setWeekLockedRules(newRules);
-      setWeekLockedRulesDisplay(newDisplay);
+      const p1 = setWeekLockedRules(newRules);
+      const p2 = setWeekLockedRulesDisplay(newDisplay);
+      await Promise.all([p1, p2]);
     }
   };
 

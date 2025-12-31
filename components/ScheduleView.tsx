@@ -402,16 +402,17 @@ export default function ScheduleView({
   const safePermanentRulesDisplay = permanentRulesDisplay || [];
 
   // Apply rules to this week only - use combined setter to avoid closure issues
-  const handleApplyWeekRules = () => {
+  const handleApplyWeekRules = async () => {
     if (parsedRules.length > 0) {
       const newRules = [...safeWeekLockedRules, ...parsedRules];
       const newDisplay = [...safeWeekLockedRulesDisplay, ...parsedPreview];
 
       if (setWeekLockedRulesAndDisplay) {
-        setWeekLockedRulesAndDisplay(newRules, newDisplay);
+        await setWeekLockedRulesAndDisplay(newRules, newDisplay);
       } else if (setWeekLockedRules && setWeekLockedRulesDisplay) {
-        setWeekLockedRules(newRules);
-        setWeekLockedRulesDisplay(newDisplay);
+        const p1 = setWeekLockedRules(newRules);
+        const p2 = setWeekLockedRulesDisplay(newDisplay);
+        await Promise.all([p1, p2]);
       }
       // Clear input after applying
       clearWeekNotesInput();
@@ -419,16 +420,17 @@ export default function ScheduleView({
   };
 
   // Apply rules permanently (all weeks - persists after refresh) - use combined setter to avoid closure issues
-  const handleApplyPermanentRules = () => {
+  const handleApplyPermanentRules = async () => {
     if (parsedRules.length > 0) {
       const newRules = [...safePermanentRules, ...parsedRules];
       const newDisplay = [...safePermanentRulesDisplay, ...parsedPreview];
 
       if (setPermanentRulesAndDisplay) {
-        setPermanentRulesAndDisplay(newRules, newDisplay);
+        await setPermanentRulesAndDisplay(newRules, newDisplay);
       } else if (setPermanentRules && setPermanentRulesDisplay) {
-        setPermanentRules(newRules);
-        setPermanentRulesDisplay(newDisplay);
+        const p1 = setPermanentRules(newRules);
+        const p2 = setPermanentRulesDisplay(newDisplay);
+        await Promise.all([p1, p2]);
       }
       // Clear input after applying
       clearWeekNotesInput();
@@ -436,46 +438,50 @@ export default function ScheduleView({
   };
 
   // Clear week rules - use combined setter to avoid closure issues
-  const handleClearWeekRules = () => {
+  const handleClearWeekRules = async () => {
     if (setWeekLockedRulesAndDisplay) {
-      setWeekLockedRulesAndDisplay([], []);
+      await setWeekLockedRulesAndDisplay([], []);
     } else if (setWeekLockedRules && setWeekLockedRulesDisplay) {
-      setWeekLockedRules([]);
-      setWeekLockedRulesDisplay([]);
+      const p1 = setWeekLockedRules([]);
+      const p2 = setWeekLockedRulesDisplay([]);
+      await Promise.all([p1, p2]);
     }
   };
 
   // Clear permanent rules - use combined setter to avoid closure issues
-  const handleClearPermanentRules = () => {
+  const handleClearPermanentRules = async () => {
     if (setPermanentRulesAndDisplay) {
-      setPermanentRulesAndDisplay([], []);
+      await setPermanentRulesAndDisplay([], []);
     } else if (setPermanentRules && setPermanentRulesDisplay) {
-      setPermanentRules([]);
-      setPermanentRulesDisplay([]);
+      const p1 = setPermanentRules([]);
+      const p2 = setPermanentRulesDisplay([]);
+      await Promise.all([p1, p2]);
     }
   };
 
   // Remove single week rule - use combined setter to avoid closure issues
-  const handleRemoveWeekRule = (index: number) => {
+  const handleRemoveWeekRule = async (index: number) => {
     const newRules = safeWeekLockedRules.filter((_, i) => i !== index);
     const newDisplay = safeWeekLockedRulesDisplay.filter((_, i) => i !== index);
     if (setWeekLockedRulesAndDisplay) {
-      setWeekLockedRulesAndDisplay(newRules, newDisplay);
+      await setWeekLockedRulesAndDisplay(newRules, newDisplay);
     } else if (setWeekLockedRules && setWeekLockedRulesDisplay) {
-      setWeekLockedRules(newRules);
-      setWeekLockedRulesDisplay(newDisplay);
+      const p1 = setWeekLockedRules(newRules);
+      const p2 = setWeekLockedRulesDisplay(newDisplay);
+      await Promise.all([p1, p2]);
     }
   };
 
   // Remove single permanent rule - use combined setter to avoid closure issues
-  const handleRemovePermanentRule = (index: number) => {
+  const handleRemovePermanentRule = async (index: number) => {
     const newRules = safePermanentRules.filter((_, i) => i !== index);
     const newDisplay = safePermanentRulesDisplay.filter((_, i) => i !== index);
     if (setPermanentRulesAndDisplay) {
-      setPermanentRulesAndDisplay(newRules, newDisplay);
+      await setPermanentRulesAndDisplay(newRules, newDisplay);
     } else if (setPermanentRules && setPermanentRulesDisplay) {
-      setPermanentRules(newRules);
-      setPermanentRulesDisplay(newDisplay);
+      const p1 = setPermanentRules(newRules);
+      const p2 = setPermanentRulesDisplay(newDisplay);
+      await Promise.all([p1, p2]);
     }
   };
 
