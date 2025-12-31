@@ -543,6 +543,64 @@ export function useSavedSchedules() {
   return { schedules: (data?.savedSchedules || []) as SavedSchedule[], isLoading, error };
 }
 
+// Analytics
+export interface WeeklyAnalytics {
+  id: string;
+  weekKey: string; // YYYY-Www format
+  totalShifts: number;
+  totalHours: number;
+  employeeUtilization: string; // JSON: { empId: hours }
+  shiftTypeDistribution: string; // JSON: { morning: X, mid: Y, night: Z }
+  bartenderCoverageRate: number; // % of dinner shifts with bartender (0-1)
+  coverageGaps: string; // JSON: array of gap descriptions
+  createdAt: number;
+}
+
+export async function createWeeklyAnalytics(analytics: Omit<WeeklyAnalytics, 'id' | 'createdAt'>) {
+  const analyticsId = id();
+  await db.transact(tx.weeklyAnalytics[analyticsId].update({
+    ...analytics,
+    createdAt: Date.now(),
+  }));
+  return analyticsId;
+}
+
+export function useWeeklyAnalytics(weekKey?: string) {
+  const query = weekKey
+    ? { weeklyAnalytics: { $: { where: { weekKey } } } }
+    : { weeklyAnalytics: {} };
+
+  const { data, isLoading, error } = db.useQuery(query);
+  return {
+    analytics: (data?.weeklyAnalytics || []) as WeeklyAnalytics[],
+    isLoading,
+    error,
+  };
+}
+
+export function useAnalyticsHistory(limit: number = 12) {
+  const { data, isLoading, error } = db.useQuery({ weeklyAnalytics: {} });
+  const allAnalytics = (data?.weeklyAnalytics || []) as WeeklyAnalytics[];
+
+  // Sort by weekKey descending and limit
+  const sorted = allAnalytics
+    .sort((a, b) => b.weekKey.localeCompare(a.weekKey))
+    .slice(0, limit);
+
+  return {
+    analytics: sorted,
+    isLoading,
+    error,
+  };
+}
+
+export async function updateWeeklyAnalytics(
+  analyticsId: string,
+  updates: Partial<Omit<WeeklyAnalytics, 'id' | 'createdAt' | 'weekKey'>>
+) {
+  await db.transact(tx.weeklyAnalytics[analyticsId].update(updates));
+}
+
 // ============================================
 // EMPLOYEE FUNCTIONS
 // ============================================
