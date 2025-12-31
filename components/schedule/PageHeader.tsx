@@ -14,13 +14,12 @@ const SendIcon = ({ className }: { className?: string }) => (
 
 interface Props {
   schedule: boolean;
-  onClear: () => void;
   onPrint: () => void;
   onArchive?: () => void;
   onPublish?: () => void;
 }
 
-export default function PageHeader({ schedule, onClear, onPrint, onArchive, onPublish }: Props) {
+export default function PageHeader({ schedule, onPrint, onArchive, onPublish }: Props) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
@@ -28,14 +27,6 @@ export default function PageHeader({ schedule, onClear, onPrint, onArchive, onPu
         <p className="text-xs sm:text-sm text-[#6b6b75] mt-1">Manage your weekly staff schedule</p>
       </div>
       <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-        {schedule && (
-          <button
-            onClick={onClear}
-            className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-[#ef4444] text-xs sm:text-sm font-semibold rounded-xl transition-all duration-200 border border-[#ef4444]/30 hover:border-[#ef4444]/50 hover:bg-[#ef4444]/10"
-          >
-            Clear
-          </button>
-        )}
         {schedule && (
           <button
             onClick={onPrint}

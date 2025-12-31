@@ -15,6 +15,13 @@ import {
 } from '@/lib/manualShifts';
 import { updateScheduleAssignmentTime } from '@/lib/scheduleEdits';
 
+// Import new sub-components
+import PageHeader from '@/components/schedule/PageHeader';
+import StatsPanel from '@/components/schedule/StatsPanel';
+import WeekNotesPanel from '@/components/schedule/WeekNotesPanel';
+import IssuesWarningsPanel from '@/components/schedule/IssuesWarningsPanel';
+import ClearScheduleButton from '@/components/schedule/ClearScheduleButton';
+
 interface Props {
   weekStart: Date;
   changeWeek: (delta: number) => void;
@@ -78,8 +85,6 @@ export default function ScheduleView({
   onArchiveSchedule,
   onPublishSchedule,
 }: Props) {
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
-
   // Local state for notes to handle clearing immediately
   const [localNotes, setLocalNotes] = useState(notes);
   const lastSyncedNotesRef = useRef(notes);
@@ -452,81 +457,32 @@ export default function ScheduleView({
         </div>
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           {schedule && (
-            <button
-              onClick={() => setShowClearConfirm(true)}
-              className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-[#ef4444]/10 hover:bg-[#ef4444]/20 text-[#ef4444] text-xs sm:text-sm font-semibold rounded-xl transition-all duration-200 border border-[#ef4444]/30 hover:border-[#ef4444]/50"
-            >
-              <TrashIcon className="w-4 h-4" />
-              <span className="hidden sm:inline">Clear Schedule</span>
-              <span className="sm:hidden">Clear</span>
-            </button>
+            <ClearScheduleButton onClearSchedule={onClearSchedule} />
           )}
-
           {schedule && (
             <button
               onClick={handlePrintSchedule}
-              className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-[#1a1a1f] hover:bg-[#222228] text-white text-xs sm:text-sm font-semibold rounded-xl transition-all duration-200 border border-[#2a2a32] hover:border-[#3a3a45]"
+              className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-white text-xs sm:text-sm font-semibold rounded-xl transition-all duration-200 border border-[#2a2a32] hover:border-[#3a3a45] hover:bg-[#222228]"
             >
-              <PrintIcon className="w-4 h-4" />
               Print
             </button>
           )}
-
           {schedule && onArchiveSchedule && (
             <button
               onClick={onArchiveSchedule}
-              className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-[#a855f7]/10 hover:bg-[#a855f7]/20 text-[#a855f7] text-xs sm:text-sm font-semibold rounded-xl transition-all duration-200 border border-[#a855f7]/30 hover:border-[#a855f7]/50"
+              className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-[#a855f7] text-xs sm:text-sm font-semibold rounded-xl transition-all duration-200 border border-[#a855f7]/30 hover:border-[#a855f7]/50 hover:bg-[#a855f7]/10"
             >
-              <ArchiveBoxIcon className="w-4 h-4" />
-              <span className="hidden sm:inline">Archive</span>
-              <span className="sm:hidden">Save</span>
+              Save
             </button>
           )}
-
           {schedule && onPublishSchedule && (
             <button
               onClick={onPublishSchedule}
-              className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-[#22c55e]/10 hover:bg-[#22c55e]/20 text-[#22c55e] text-xs sm:text-sm font-semibold rounded-xl transition-all duration-200 border border-[#22c55e]/30 hover:border-[#22c55e]/50"
+              className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-[#22c55e] text-xs sm:text-sm font-semibold rounded-xl transition-all duration-200 border border-[#22c55e]/30 hover:border-[#22c55e]/50 hover:bg-[#22c55e]/10"
               title="Publish this schedule so employees can view it"
             >
-              <SendIcon className="w-4 h-4" />
-              <span className="hidden sm:inline">Publish</span>
-              <span className="sm:hidden">Pub</span>
+              Publish
             </button>
-          )}
-
-          {/* Clear Confirmation Modal */}
-          {showClearConfirm && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-              <div className="bg-[#1a1a1f] rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4 transform transition-all scale-100 border border-[#2a2a32]">
-                <div className="flex items-center gap-3 mb-4 text-[#ef4444]">
-                  <div className="w-10 h-10 rounded-full bg-[#ef4444]/10 flex items-center justify-center">
-                    <TrashIcon className="w-5 h-5" />
-                  </div>
-                  <h3 className="text-lg font-bold text-white">Clear Schedule?</h3>
-                </div>
-                <p className="text-[#a0a0a8] mb-6">
-                  Are you sure you want to clear the entire schedule? This action cannot be undone.
-                </p>
-                <div className="flex gap-3 justify-end">
-                  <button
-                    onClick={() => setShowClearConfirm(false)}
-                    className="px-4 py-2 text-[#a0a0a8] font-medium hover:bg-[#222228] rounded-lg transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => {
-                      onClearSchedule();
-                      setShowClearConfirm(false);
-                    }}
-                    className="px-4 py-2 bg-[#ef4444] text-white font-medium rounded-lg hover:bg-[#dc2626] shadow-lg shadow-[#ef4444]/20 transition-all"
-                  >
-                    Yes, Clear It
-                  </button>
-                </div>
-              </div>
-            </div>
           )}
           <button
             onClick={() => handleGenerate(localNotes)}
@@ -551,176 +507,30 @@ export default function ScheduleView({
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard
-          label="Total Shifts"
-          value={stats.totalShifts}
-          icon={<CalendarIcon className="w-5 h-5" />}
-          trend={schedule ? '+12% from last week' : undefined}
-          color="blue"
-        />
-        <StatCard
-          label="Staff Scheduled"
-          value={stats.staffScheduled}
-          icon={<UsersIcon className="w-5 h-5" />}
-          trend={schedule ? `of ${employees.length} employees` : undefined}
-          color="green"
-        />
-        <StatCard
-          label="Coverage"
-          value={schedule ? `${stats.coverage}%` : '-'}
-          icon={<CheckIcon className="w-5 h-5" />}
-          trend={stats.conflicts > 0 ? `${stats.conflicts} gaps` : schedule ? 'Full coverage' : undefined}
-          color={stats.conflicts > 0 ? 'red' : 'emerald'}
-        />
-        <StatCard
-          label="Week"
-          value={formatWeekRange(weekStart).split(',')[0]}
-          icon={<ClockIcon className="w-5 h-5" />}
-          color="purple"
-          weekNav={{ onPrev: () => changeWeek(-1), onNext: () => changeWeek(1) }}
-        />
-      </div>
+      <StatsPanel
+        stats={stats}
+        schedule={schedule}
+        employees={employees}
+        weekStart={weekStart}
+        formatWeekRange={formatWeekRange}
+        onChangeWeek={changeWeek}
+      />
 
       {/* Week Notes - Quick input for this week's scheduling instructions */}
-      <div className="bg-[#1a1a1f] rounded-2xl border border-[#2a2a32] p-4 sm:p-5 hover:border-[#3a3a45] transition-colors duration-200">
-        <div className="flex flex-col lg:flex-row lg:items-start gap-4">
-          {/* Left: Input */}
-          <div className="flex-1">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-semibold text-[#a0a0a8]">
-                Week Notes <span className="text-[#6b6b75] font-normal">({formatWeekRange(weekStart).split(',')[0]})</span>
-              </label>
-              {localNotes.trim() && (
-                <button
-                  onClick={() => {
-                    clearWeekNotesInput();
-                  }}
-                  className="text-xs text-[#ef4444] hover:text-[#f87171] transition-colors"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-            <textarea
-              value={localNotes}
-              onChange={(e) => handleNotesChange(e.target.value)}
-              placeholder="e.g., December 24 closing at 2pm, December 25 CLOSED, [Name] opens Saturday, [Name] off Tuesday..."
-              className="w-full h-20 p-3 bg-[#141417] border border-[#2a2a32] rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#e5a825]/40 focus:border-[#e5a825] resize-none transition-all duration-200 placeholder:text-[#6b6b75]"
-            />
-            <p className="mt-2 text-[11px] text-[#6b6b75]">
-              Tip: Clicking &quot;This Week&quot; or &quot;Always&quot; saves rules in the lists on the right. Clearing this box does not remove saved rules.
-            </p>
-            {/* Preview */}
-            {parsedPreview.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {parsedPreview.map((text, idx) => (
-                  <span
-                    key={idx}
-                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${text.includes('CLOSED') ? 'bg-[#ef4444]/10 text-[#ef4444] border border-[#ef4444]/30' :
-                      text.includes('Close at') ? 'bg-[#f59e0b]/10 text-[#f59e0b] border border-[#f59e0b]/30' :
-                        text.startsWith('✗') ? 'bg-[#ef4444]/10 text-[#ef4444] border border-[#ef4444]/30' :
-                          'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30'
-                      }`}
-                  >
-                    {text}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Middle: Apply Buttons */}
-          <div className="flex lg:flex-col items-center justify-center gap-4 lg:gap-2 lg:pt-6">
-            {/* This Week Button */}
-            <div className="flex flex-col items-center">
-              <button
-                onClick={handleApplyWeekRules}
-                disabled={parsedPreview.length === 0}
-                className={`p-2.5 rounded-full transition-all duration-200 ${parsedPreview.length > 0
-                  ? 'bg-[#e5a825] text-[#0d0d0f] hover:bg-[#f5b835] shadow-lg shadow-[#e5a825]/30 hover:scale-110'
-                  : 'bg-[#2a2a32] text-[#6b6b75] cursor-not-allowed'
-                  }`}
-                title="Apply to this week only"
-              >
-                <ArrowRightIcon className="w-4 h-4" />
-              </button>
-              <span className="text-[10px] text-[#6b6b75] mt-0.5">This Week</span>
-            </div>
-            {/* Save Permanently Button */}
-            <div className="flex flex-col items-center">
-              <button
-                onClick={handleApplyPermanentRules}
-                disabled={parsedPreview.length === 0}
-                className={`p-2.5 rounded-full transition-all duration-200 ${parsedPreview.length > 0
-                  ? 'bg-[#a855f7] text-white hover:bg-[#b975f9] shadow-lg shadow-[#a855f7]/30 hover:scale-110'
-                  : 'bg-[#2a2a32] text-[#6b6b75] cursor-not-allowed'
-                  }`}
-                title="Save permanently (all weeks, persists after refresh)"
-              >
-                <LockClosedIcon className="w-4 h-4" />
-              </button>
-              <span className="text-[10px] text-[#6b6b75] mt-0.5">Always</span>
-            </div>
-          </div>
-
-          {/* Right: Active Rules (Two Sections) */}
-          <div className="w-full lg:w-72 space-y-2">
-            {/* This Week Rules */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[10px] font-medium text-[#e5a825] flex items-center gap-1">
-                  <CalendarIcon className="w-3 h-3" />
-                  This Week {safeWeekLockedRulesDisplay.length > 0 && `(${safeWeekLockedRulesDisplay.length})`}
-                </label>
-                {safeWeekLockedRulesDisplay.length > 0 && (
-                  <button onClick={handleClearWeekRules} className="text-[10px] text-[#ef4444] hover:text-[#f87171]">Clear</button>
-                )}
-              </div>
-              <div className="h-16 bg-[#141417] border border-[#e5a825]/30 rounded-lg p-1.5 overflow-y-auto">
-                {safeWeekLockedRulesDisplay.length > 0 ? (
-                  <div className="space-y-1">
-                    {safeWeekLockedRulesDisplay.map((text, idx) => (
-                      <div key={idx} className="px-1.5 py-0.5 rounded text-[10px] font-medium flex items-center justify-between gap-1 bg-[#e5a825]/10 text-[#e5a825] border border-[#e5a825]/30">
-                        <span className="truncate">{text}</span>
-                        <button onClick={() => handleRemoveWeekRule(idx)} className="hover:text-[#ef4444] flex-shrink-0"><XIcon className="w-2.5 h-2.5" /></button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-[10px] text-[#6b6b75]">Only this week</div>
-                )}
-              </div>
-            </div>
-            {/* Permanent Rules */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[10px] font-medium text-[#a855f7] flex items-center gap-1">
-                  <LockClosedIcon className="w-3 h-3" />
-                  Always {safePermanentRulesDisplay.length > 0 && `(${safePermanentRulesDisplay.length})`}
-                </label>
-                {safePermanentRulesDisplay.length > 0 && (
-                  <button onClick={handleClearPermanentRules} className="text-[10px] text-[#ef4444] hover:text-[#f87171]">Clear</button>
-                )}
-              </div>
-              <div className="h-16 bg-[#141417] border border-[#a855f7]/30 rounded-lg p-1.5 overflow-y-auto">
-                {safePermanentRulesDisplay.length > 0 ? (
-                  <div className="space-y-1">
-                    {safePermanentRulesDisplay.map((text, idx) => (
-                      <div key={idx} className="px-1.5 py-0.5 rounded text-[10px] font-medium flex items-center justify-between gap-1 bg-[#a855f7]/10 text-[#a855f7] border border-[#a855f7]/30">
-                        <span className="truncate">{text}</span>
-                        <button onClick={() => handleRemovePermanentRule(idx)} className="hover:text-[#ef4444] flex-shrink-0"><XIcon className="w-2.5 h-2.5" /></button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-[10px] text-[#6b6b75]">Saved rules (persist after refresh)</div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <WeekNotesPanel
+        notes={localNotes}
+        onNotesChange={handleNotesChange}
+        onApplyWeek={handleApplyWeekRules}
+        onApplyPermanent={handleApplyPermanentRules}
+        weekRules={safeWeekLockedRulesDisplay}
+        permanentRules={safePermanentRulesDisplay}
+        onRemoveWeekRule={handleRemoveWeekRule}
+        onRemovePermanentRule={handleRemovePermanentRule}
+        onClearWeekRules={handleClearWeekRules}
+        onClearPermanentRules={handleClearPermanentRules}
+        weekRange={formatWeekRange(weekStart).split(',')[0]}
+        parsedPreview={parsedPreview}
+      />
 
       {/* Main Content Area */}
       <div className="bg-[#1a1a1f] rounded-2xl border border-[#2a2a32] overflow-hidden hover:border-[#3a3a45] transition-colors duration-200">
@@ -770,101 +580,9 @@ export default function ScheduleView({
       </div>
 
       {/* Conflicts & Warnings */}
-      {schedule && (schedule.conflicts.length > 0 || schedule.warnings.length > 0) && (
-        <div className="bg-[#1a1a1f] rounded-xl border border-[#2a2a32] p-6">
-          <h3 className="text-sm font-medium text-white mb-4">Issues & Warnings</h3>
-          <div className="space-y-3">
-            {schedule.conflicts.map((conflict, idx) => (
-              <div key={idx} className="flex items-start gap-3 p-3 bg-[#ef4444]/10 rounded-lg border border-[#ef4444]/20">
-                <div className="w-8 h-8 bg-[#ef4444]/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <AlertIcon className="w-4 h-4 text-[#ef4444]" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-[#ef4444]">
-                    {conflict.type === 'rule_violation' ? 'Rule Violation' :
-                      conflict.type === 'no_bartender' ? 'Missing Bartender' :
-                        'Coverage Gap'}
-                  </p>
-                  <p className="text-sm text-[#ef4444]/80">{conflict.message}</p>
-                </div>
-              </div>
-            ))}
-            {schedule.warnings.map((warning, idx) => (
-              <div key={idx} className="flex items-start gap-3 p-3 bg-[#e5a825]/10 rounded-lg border border-[#e5a825]/20">
-                <div className="w-8 h-8 bg-[#e5a825]/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <WarningIcon className="w-4 h-4 text-[#e5a825]" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-[#e5a825]">
-                    {warning.type === 'overtime' ? 'Overtime Alert' : 'Scheduling Note'}
-                  </p>
-                  <p className="text-sm text-[#e5a825]/80">{warning.message}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      {schedule && (
+        <IssuesWarningsPanel schedule={schedule} />
       )}
-    </div>
-  );
-}
-
-// Stat Card Component
-function StatCard({
-  label,
-  value,
-  icon,
-  trend,
-  color,
-  weekNav,
-}: {
-  label: string;
-  value: string | number;
-  icon: React.ReactNode;
-  trend?: string;
-  color: string;
-  weekNav?: { onPrev: () => void; onNext: () => void };
-}) {
-  const colorClasses: Record<string, { bg: string; icon: string; shadow: string }> = {
-    blue: { bg: 'bg-[#3b82f6]', icon: 'text-white', shadow: 'shadow-[#3b82f6]/30' },
-    green: { bg: 'bg-[#22c55e]', icon: 'text-white', shadow: 'shadow-[#22c55e]/30' },
-    emerald: { bg: 'bg-[#22c55e]', icon: 'text-white', shadow: 'shadow-[#22c55e]/30' },
-    red: { bg: 'bg-[#ef4444]', icon: 'text-white', shadow: 'shadow-[#ef4444]/30' },
-    purple: { bg: 'bg-[#a855f7]', icon: 'text-white', shadow: 'shadow-[#a855f7]/30' },
-  };
-
-  const colorStyle = colorClasses[color] || colorClasses.blue;
-
-  return (
-    <div className="bg-[#1a1a1f] rounded-2xl border border-[#2a2a32] p-5 hover:border-[#3a3a45] transition-all duration-200 group">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-medium text-[#6b6b75]">{label}</span>
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${colorStyle.bg} shadow-lg ${colorStyle.shadow} group-hover:scale-110 transition-transform duration-200`}>
-          {icon}
-        </div>
-      </div>
-      <div className="flex items-end justify-between">
-        <div>
-          <p className="text-2xl font-bold text-white">{value}</p>
-          {trend && <p className="text-xs text-[#6b6b75] mt-1">{trend}</p>}
-        </div>
-        {weekNav && (
-          <div className="flex gap-1">
-            <button
-              onClick={weekNav.onPrev}
-              className="p-1.5 hover:bg-[#222228] rounded-lg transition-all duration-200 hover:scale-110"
-            >
-              <ChevronLeftIcon className="w-4 h-4 text-[#6b6b75]" />
-            </button>
-            <button
-              onClick={weekNav.onNext}
-              className="p-1.5 hover:bg-[#222228] rounded-lg transition-all duration-200 hover:scale-110"
-            >
-              <ChevronRightIcon className="w-4 h-4 text-[#6b6b75]" />
-            </button>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
@@ -1542,61 +1260,6 @@ function CalendarIcon({ className }: { className?: string }) {
   );
 }
 
-function UsersIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-    </svg>
-  );
-}
-
-function CheckIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-    </svg>
-  );
-}
-
-function ClockIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-  );
-}
-
-function ChevronLeftIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-    </svg>
-  );
-}
-
-function ChevronRightIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-    </svg>
-  );
-}
-
-function AlertIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-    </svg>
-  );
-}
-
-function WarningIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-    </svg>
-  );
-}
 
 function LockClosedIcon({ className }: { className?: string }) {
   return (
@@ -1614,37 +1277,6 @@ function LockOpenIcon({ className }: { className?: string }) {
   );
 }
 
-function TrashIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-    </svg>
-  );
-}
-
-function PrintIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" />
-    </svg>
-  );
-}
-
-function ArrowRightIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-    </svg>
-  );
-}
-
-function XIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-    </svg>
-  );
-}
 
 function PencilIcon({ className }: { className?: string }) {
   return (
@@ -1654,18 +1286,3 @@ function PencilIcon({ className }: { className?: string }) {
   );
 }
 
-function ArchiveBoxIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0l-3-3m3 3l3-3M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
-    </svg>
-  );
-}
-
-function SendIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.27 3.125A59.77 59.77 0 0121.485 12 59.77 59.77 0 013.27 20.875L6 12zm0 0h7.5" />
-    </svg>
-  );
-}
